@@ -23,22 +23,39 @@ class MLService:
             X_input = pd.DataFrame([row[MLService.FEATURE_COLS]])
             forecast_val = float(model.predict(X_input)[0])
             
+            # 1. Penentuan Tren yang Lebih Bersih
             trend = "STABLE"
             if row['sales_trend_7d'] > 0.01: trend = "INCREASING"
             elif row['sales_trend_7d'] < -0.01: trend = "DECREASING"
+
+            # 2. Smart Risk Flags (Celah #2 Audit - Business Logic)
+            # Overstock bermakna: Stok banyak DAN tren menurun
+            is_overstock = bool(row['stock_coverage'] > 30 and trend == "DECREASING")
+            # Deadstock bermakna: Stok banyak DAN penjualan hampir nol
+            is_deadstock = bool(row['stock_coverage'] > 30 and row['avg_sales_30d'] < 0.1)
+            # Stockout bermakna: Coverage lebih rendah dari lead time
+            is_stockout = bool(row['stock_coverage'] < row['lead_time_days'])
 
             predictions.append({
                 "product_id": row['product_id'],
                 "store_id": row['store_id'],
                 "category": row['category'],
                 "current_stock": int(row['stock_qty']),
-                "avg_daily_demand_forecast": round(forecast_val, 2),
+                "demand_signal": {
+                    "avg_daily_demand_forecast": round(forecast_val, 2),
+                    "avg_sales_30d_actual": round(float(row['avg_sales_30d']), 3), # Celah Final Audit
+                    "lost_sales_last_snapshot": int(row.get('lost_sales', 0)),
+                    "unmet_demand_flag": bool(row.get('lost_sales', 0) > 0)
+                },
                 "stock_coverage_days": round(row['stock_coverage'], 1),
                 "trend_direction": trend,
                 "risk_flags": {
-                    "stockout_risk": bool(row['stock_coverage'] < row['lead_time_days']),
-                    "overstock_risk": bool(row['stock_coverage'] > 30)
-                }
+                    "stockout_risk": is_stockout,
+                    "overstock_risk": is_overstock,
+                    "deadstock_risk": is_deadstock,
+                    "promo_opportunity": bool(trend == "DECREASING" and row['stock_qty'] > 50)
+                },
+                "confidence_score": 0.85 # NOTE: Placeholder value for Workload D/E
             })
         
         return {
