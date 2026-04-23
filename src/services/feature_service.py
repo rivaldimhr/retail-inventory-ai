@@ -26,22 +26,66 @@ class FeatureService:
     def simulate_stock(group, initial_stock=100, reorder_point=20, reorder_qty=80):
         stock = initial_stock
         stocks = []
-        for sold in group['units_sold']:
-            stock = max(0, stock - sold)
-            if stock <= reorder_point:
-                stock += reorder_qty
+        lost_sales = []
+        pending_deliveries = [] # List of (delivery_date, qty)
+        
+        lead_time = int(group['lead_time_days'].iloc[0]) if 'lead_time_days' in group.columns else 3
+        
+        for idx, row in group.iterrows():
+            current_date = row['date']
+            
+            # 1. Cek kiriman yang sampai hari ini
+            deliveries_today = [qty for d_date, qty in pending_deliveries if d_date <= current_date]
+            stock += sum(deliveries_today)
+            pending_deliveries = [(d_date, qty) for d_date, qty in pending_deliveries if d_date > current_date]
+            
+            # 2. Kurangi stok & Catat Lost Sales (Celah #1 Audit)
+            sold_requested = row['units_sold']
+            actual_sold = min(stock, sold_requested)
+            lost = max(0, sold_requested - actual_sold)
+            
+            stock = max(0, stock - sold_requested)
+            
+            # 3. Cek apakah perlu reorder
+            if stock <= reorder_point and not pending_deliveries:
+                arrival_date = current_date + pd.Timedelta(days=lead_time)
+                pending_deliveries.append((arrival_date, reorder_qty))
+            
             stocks.append(stock)
+            lost_sales.append(lost)
+            
         group['stock_qty'] = stocks
+        group['lost_sales'] = lost_sales
         return group
 
     @staticmethod
     def calculate_rolling_features(df):
         df = df.sort_values(['product_id', 'date'])
-        df['avg_sales_7d'] = df.groupby('product_id')['units_sold'].transform(lambda x: x.rolling(window=7, min_periods=1).mean())
-        df['avg_sales_30d'] = df.groupby('product_id')['units_sold'].transform(lambda x: x.rolling(window=30, min_periods=1).mean())
-        df['sales_trend_7d'] = df.groupby('product_id')['units_sold'].transform(
-            lambda x: x.rolling(window=7, min_periods=1).apply(lambda y: np.polyfit(range(len(y)), y, 1)[0] if len(y) > 1 else 0)
+        df = df.set_index('date')
+        
+        # Rolling averages
+        df['avg_sales_7d'] = df.groupby('product_id')['units_sold'].transform(
+            lambda x: x.rolling(window='7D', min_periods=1).mean()
         )
+        df['avg_sales_30d'] = df.groupby('product_id')['units_sold'].transform(
+            lambda x: x.rolling(window='30D', min_periods=1).mean()
+        )
+        
+        # Perbaikan Celah #2 Audit: Filter False INCREASING pada data sparse
+        def get_trend(y):
+            if len(y) > 1:
+                non_zero_days = (y > 0).sum()
+                if non_zero_days < 2: # Butuh minimal 2 titik data asli untuk tren
+                    return 0.0
+                return round(np.polyfit(range(len(y)), y, 1)[0], 4)
+            return 0.0
+
+        df['sales_trend_7d'] = df.groupby('product_id')['units_sold'].transform(
+            lambda x: x.rolling(window='7D', min_periods=1).apply(get_trend)
+        )
+        
+        df = df.reset_index()
+        # Coverage dihitung di sini agar sinkron dengan stock_qty final (Bug #4)
         df['stock_coverage'] = df['stock_qty'] / df['avg_sales_7d'].replace(0, 0.001)
         return df
 
