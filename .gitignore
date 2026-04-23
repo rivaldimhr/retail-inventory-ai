@@ -7,9 +7,9 @@ env/
 .env
 
 # Data & ML Models (Large files / Generated outputs)
-data/processed_features.csv
-data/demand_model.pkl
-data/forecast_results.json
+data/*.csv
+data/*.pkl
+data/*.json
 
 # IDEs
 .vscode/
