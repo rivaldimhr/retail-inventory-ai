@@ -28,6 +28,7 @@ class OrchestratorController:
         
         # Services
         df = FeatureService.reindex_to_daily(df)
+        # BUG #4 FIX: Simulate stock FIRST, then calculate features based on that stock
         df = df.groupby('product_id', group_keys=False).apply(FeatureService.simulate_stock)
         df = FeatureService.calculate_rolling_features(df)
         df = FeatureService.add_calendar_features(df)
