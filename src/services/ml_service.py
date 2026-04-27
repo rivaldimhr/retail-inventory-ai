@@ -53,7 +53,8 @@ class MLService:
                     "stockout_risk": is_stockout,
                     "overstock_risk": is_overstock,
                     "deadstock_risk": is_deadstock,
-                    "promo_opportunity": bool(trend == "DECREASING" and row['stock_qty'] > 50)
+                    "promo_opportunity": bool(trend == "DECREASING" and row['stock_qty'] > 50),
+                    "missed_revenue_flag": bool(row.get('lost_sales', 0) > 0 and not is_stockout)
                 },
                 "confidence_score": 0.85 # NOTE: Placeholder value for Workload D/E
             })
