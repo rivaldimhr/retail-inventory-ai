@@ -173,6 +173,17 @@ export default function App() {
   const deadstockCount = predictions.filter((p) => p.risk_flags.deadstock_risk).length;
   const lostSalesCount = predictions.filter((p) => p.risk_flags.missed_revenue_flag).length;
 
+  const inventoryContext = metadata
+    ? {
+        total_count: metadata.total_count,
+        stockout_count: stockoutCount,
+        overstock_count: overstockCount,
+        deadstock_count: deadstockCount,
+        lost_sales_count: lostSalesCount,
+        generated_at: metadata.generated_at,
+      }
+    : null;
+
   return (
     <div className="app">
       {/* ── Navbar ── */}
@@ -329,7 +340,7 @@ export default function App() {
         AIforBusiness © {new Date().getFullYear()} — Powered by FastAPI + XGBoost
       </footer>
 
-      <FloatingAIChat />
+      <FloatingAIChat inventoryContext={inventoryContext} />
     </div>
   );
 }
