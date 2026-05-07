@@ -45,8 +45,10 @@ def batch_generate(forecast: dict) -> list:
     results = []
     for prediction in forecast.get("predictions", []):
         recommendation = generate_recommendation(prediction)
-        results.append({
-            "product_id": prediction["product_id"],
-            "recommendation": recommendation,
-        })
+        results.append(
+            {
+                "product_id": prediction["product_id"],
+                "recommendation": recommendation,
+            }
+        )
     return results
