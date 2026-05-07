@@ -1,91 +1,167 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from src.repositories.data_repository import ModelRepository
-from typing import Optional, List, Dict
+from src.controllers.orchestrator import OrchestratorController
+from typing import Optional
 import time
+import logging
 
-app = FastAPI(title="AIforBusiness Forecast API", version="1.0.0")
+# =========================
+# CONFIG LOGGING
+# =========================
+logging.basicConfig(level=logging.INFO)
 
-# Cache in-memory untuk menghindari I/O disk per request
+# =========================
+# INIT APP
+# =========================
+app = FastAPI(
+    title="AIforBusiness Forecast API",
+    version="2.0.0",
+    description="Retail Inventory Optimization API with ML Forecasting"
+)
+
+# =========================
+# CACHE CONFIG
+# =========================
 forecast_cache = {
     "data": None,
     "loaded_at": None
 }
 
-# Middleware CORS untuk integrasi Frontend (Dashboard)
+CACHE_TTL_SECONDS = 3600  # 1 jam
+
+# =========================
+# CORS (Dashboard Integration)
+# =========================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # bisa dibatasi di production
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup_event():
-    """Load data ke memori saat server mulai."""
-    refresh_cache()
+# =========================
+# CACHE HANDLER
+# =========================
 
-def refresh_cache():
-    """Helper untuk memuat ulang data dari disk ke memori cache."""
-    data = ModelRepository.load_forecast()
-    if data and "error" not in data:
+
+def refresh_cache() -> bool:
+    try:
+        data = ModelRepository.load_forecast()
+
+        if not data or "error" in data:
+            logging.warning("Forecast data missing or outdated")
+            return False
+
         forecast_cache["data"] = data
         forecast_cache["loaded_at"] = time.time()
-        return True
-    return False
 
+        logging.info("Cache successfully refreshed")
+        return True
+
+    except Exception as e:
+        logging.error(f"Failed to load forecast: {e}")
+        return False
+
+
+def is_cache_expired() -> bool:
+    if not forecast_cache["loaded_at"]:
+        return True
+
+    return (time.time() - forecast_cache["loaded_at"]) > CACHE_TTL_SECONDS
+
+
+# =========================
+# STARTUP EVENT
+# =========================
+@app.on_event("startup")
+async def startup_event():
+    logging.info("Starting API & loading cache...")
+    refresh_cache()
+
+
+# =========================
+# ROOT ENDPOINT
+# =========================
 @app.get("/")
 async def root():
-    return {"message": "AIforBusiness API is running", "status": "active"}
+    return {
+        "message": "AIforBusiness API is running",
+        "status": "active",
+        "workload": "D"
+    }
 
+
+# =========================
+# GET FORECAST
+# =========================
 @app.get("/api/v1/forecast")
-async def get_forecast(product_id: Optional[str] = None, category: Optional[str] = None):
-    """
-    Endpoint utama untuk LLM dan Dashboard.
-    Mendukung filter product_id dan category.
-    """
-    if not forecast_cache["data"]:
-        # Jika cache kosong, coba load manual
+async def get_forecast(
+    product_id: Optional[str] = None,
+    category: Optional[str] = None
+):
+    # Refresh cache jika kosong / expired
+    if not forecast_cache["data"] or is_cache_expired():
         if not refresh_cache():
-            raise HTTPException(status_code=503, detail="Forecast data unavailable or outdated.")
+            raise HTTPException(
+                status_code=503,
+                detail="Forecast data unavailable or outdated. Please refresh."
+            )
 
-    data = forecast_cache["data"]["predictions"]
-    
-    # Filtering logic
+    raw_data = forecast_cache["data"]
+    predictions = raw_data.get("predictions", [])
+
+    # =========================
+    # FILTERING
+    # =========================
     if product_id:
-        data = [p for p in data if p["product_id"] == product_id]
+        predictions = [
+            p for p in predictions
+            if p.get("product_id", "").lower() == product_id.lower()
+        ]
+
     if category:
-        data = [p for p in data if p["category"].lower() == category.lower()]
+        predictions = [
+            p for p in predictions
+            if p.get("category", "").lower() == category.lower()
+        ]
 
     return {
         "status": "success",
         "metadata": {
-            "generated_at": forecast_cache["data"].get("generated_at"),
-            "cached_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(forecast_cache["loaded_at"])),
-            "total_count": len(data)
+            "generated_at": raw_data.get("generated_at"),
+            "cached_at": time.strftime(
+                '%Y-%m-%d %H:%M:%S',
+                time.localtime(forecast_cache["loaded_at"])
+            ),
+            "total_count": len(predictions)
         },
-        "data": data
+        "data": predictions
     }
 
+
+# =========================
+# REFRESH PIPELINE (IMPORTANT)
+# =========================
 @app.post("/api/v1/forecast/refresh")
-async def trigger_refresh():
-    """Endpoint untuk memaksa reload cache setelah pipeline ML selesai."""
-    if refresh_cache():
+async def refresh_forecast():
+    try:
+        logging.info("Running full pipeline...")
+
+        OrchestratorController.run_data_pipeline()
+        forecast = OrchestratorController.run_ml_workflow()
+
+        refresh_cache()
+
         return {
-            "status": "refreshed", 
-            "loaded_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(forecast_cache["loaded_at"]))
+            "status": "success",
+            "message": "Forecast successfully refreshed",
+            "data_points": len(forecast.get("predictions", []))
         }
-    raise HTTPException(status_code=500, detail="Failed to refresh cache. Check if forecast_results.json exists and is valid.")
 
-@app.get("/api/v1/health")
-async def health_check():
-    """Health check untuk monitoring."""
-    is_stale = False
-    if forecast_cache["loaded_at"]:
-        is_stale = (time.time() - forecast_cache["loaded_at"]) / 3600 > 24
-
-    return {
-        "status": "healthy",
-        "cache_loaded": forecast_cache["loaded_at"] is not None,
-        "data_stale": is_stale
-    }
+    except Exception as e:
+        logging.error(f"Pipeline failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refresh forecast: {str(e)}"
+        )
