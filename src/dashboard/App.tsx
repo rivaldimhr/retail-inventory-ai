@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import "./Dashboard.css";
+import FloatingAIChat from "./FloatingAIChat";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -327,6 +328,8 @@ export default function App() {
       <footer className="footer">
         AIforBusiness © {new Date().getFullYear()} — Powered by FastAPI + XGBoost
       </footer>
+
+      <FloatingAIChat />
     </div>
   );
 }

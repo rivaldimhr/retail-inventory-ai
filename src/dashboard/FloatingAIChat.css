@@ -1,0 +1,364 @@
+/* ── Floating AI Chat ──────────────────────────────────────────────────────── */
+
+.fai-root {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+/* ── Trigger Button ───────────────────────────────────────────────────────── */
+
+.fai-trigger {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 4px 16px rgba(67, 56, 202, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+  flex-shrink: 0;
+}
+
+.fai-trigger:hover {
+  transform: scale(1.08);
+  box-shadow:
+    0 8px 24px rgba(67, 56, 202, 0.55),
+    0 4px 10px rgba(0, 0, 0, 0.18);
+}
+
+.fai-trigger:active {
+  transform: scale(0.96);
+}
+
+.fai-trigger--active {
+  background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #6366f1 100%);
+}
+
+.fai-trigger-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.fai-trigger-icon--rotated {
+  transform: rotate(15deg) scale(0.9);
+}
+
+/* Pulse ring */
+.fai-trigger-pulse {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid rgba(99, 102, 241, 0.5);
+  animation: fai-ring-pulse 2.5s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes fai-ring-pulse {
+  0%   { transform: scale(1); opacity: 0.8; }
+  70%  { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+/* ── Popup Panel ──────────────────────────────────────────────────────────── */
+
+.fai-popup {
+  width: 340px;
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid #e2e8f0;
+  box-shadow:
+    0 20px 60px rgba(15, 23, 42, 0.12),
+    0 8px 20px rgba(67, 56, 202, 0.1);
+  overflow: hidden;
+  transform-origin: bottom right;
+}
+
+.fai-popup--open {
+  animation: fai-popup-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.fai-popup--close {
+  animation: fai-popup-out 0.22s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+
+@keyframes fai-popup-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes fai-popup-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.85) translateY(12px);
+  }
+}
+
+/* ── Popup Header ─────────────────────────────────────────────────────────── */
+
+.fai-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+}
+
+.fai-popup-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fai-popup-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.fai-popup-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.2px;
+}
+
+.fai-popup-subtitle {
+  font-size: 11px;
+  color: #a5b4fc;
+  margin-top: 1px;
+}
+
+.fai-close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.fai-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* ── Popup Body ───────────────────────────────────────────────────────────── */
+
+.fai-popup-body {
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.fai-popup-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.fai-popup-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.fai-popup-body::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+/* ── Greeting ─────────────────────────────────────────────────────────────── */
+
+.fai-greeting {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #4c1d95;
+  line-height: 1.5;
+}
+
+.fai-greeting svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #7c3aed;
+}
+
+/* ── Insight Cards ────────────────────────────────────────────────────────── */
+
+.fai-insights {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fai-insight-card {
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+}
+
+.fai-insight-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 4px;
+}
+
+.fai-insight-text {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.insight-danger {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.insight-danger .fai-insight-label {
+  color: #9f1239;
+}
+
+.insight-danger .fai-insight-text {
+  color: #be123c;
+}
+
+.insight-warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.insight-warning .fai-insight-label {
+  color: #92400e;
+}
+
+.insight-warning .fai-insight-text {
+  color: #b45309;
+}
+
+.insight-info {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.insight-info .fai-insight-label {
+  color: #1e40af;
+}
+
+.insight-info .fai-insight-text {
+  color: #2563eb;
+}
+
+/* ── Input Area ───────────────────────────────────────────────────────────── */
+
+.fai-input-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 8px 8px 12px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.fai-input-area:focus-within {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+  background: #fff;
+}
+
+.fai-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: #0f172a;
+  outline: none;
+  font-family: inherit;
+  cursor: not-allowed;
+}
+
+.fai-input::placeholder {
+  color: #94a3b8;
+}
+
+.fai-send-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #4338ca, #6366f1);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: not-allowed;
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+/* ── Disclaimer ───────────────────────────────────────────────────────────── */
+
+.fai-disclaimer {
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  padding-top: 2px;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .fai-root {
+    bottom: 20px;
+    right: 16px;
+  }
+
+  .fai-popup {
+    width: calc(100vw - 32px);
+    max-width: 340px;
+  }
+}
