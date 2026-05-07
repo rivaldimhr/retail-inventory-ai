@@ -1,7 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from src.repositories.data_repository import ModelRepository
 from src.controllers.orchestrator import OrchestratorController
+from src.llm_engine.generator import generate_chat_response
 from typing import Optional
 import time
 import logging
@@ -138,6 +140,49 @@ async def get_forecast(
         },
         "data": predictions
     }
+
+
+# =========================
+# CHAT ENDPOINT
+# =========================
+
+class ChatRequest(BaseModel):
+    message: str
+    inventory_context: Optional[dict] = None
+
+
+@app.post("/api/v1/chat")
+async def chat(req: ChatRequest):
+    if not req.message or not req.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    context = req.inventory_context
+    if context is None and forecast_cache.get("data"):
+        raw = forecast_cache["data"]
+        predictions = raw.get("predictions", [])
+        stockout = [p for p in predictions if p.get("risk_flags", {}).get("stockout_risk")]
+        overstock = [p for p in predictions if p.get("risk_flags", {}).get("overstock_risk")]
+        deadstock = [p for p in predictions if p.get("risk_flags", {}).get("deadstock_risk")]
+        lost_sales = [p for p in predictions if p.get("risk_flags", {}).get("missed_revenue_flag")]
+        top_risks = sorted(
+            [p for p in predictions if any(p.get("risk_flags", {}).values())],
+            key=lambda p: p.get("stock_coverage_days", 999)
+        )
+        context = {
+            "total_count": len(predictions),
+            "stockout_count": len(stockout),
+            "overstock_count": len(overstock),
+            "deadstock_count": len(deadstock),
+            "lost_sales_count": len(lost_sales),
+            "generated_at": raw.get("generated_at", "unknown"),
+            "top_risks": top_risks[:10],
+        }
+
+    try:
+        response_text = generate_chat_response(req.message.strip(), context)
+        return {"status": "success", "response": response_text}
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 # =========================
