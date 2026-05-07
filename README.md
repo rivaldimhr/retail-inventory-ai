@@ -36,23 +36,46 @@ Sistem kini menggunakan logika bisnis yang lebih cerdas untuk mengurangi *false 
 
 1. **Install Dependencies**:
    ```bash
-   pip install pandas numpy xgboost holidays matplotlib
+   pip install pandas numpy xgboost holidays matplotlib fastapi uvicorn
    ```
 
 2. **Run Pipeline & Audit**:
    ```bash
-   # Jalankan Pipeline Utama
+   # Jalankan Pipeline Utama (Update Data & ML)
    $env:PYTHONPATH = "."; python src/controllers/orchestrator.py
-   
-   # Jalankan Validasi EDA (Hasil di notebooks/eda_output/)
-   python notebooks/eda_pipeline_validation.py
    ```
+
+3. **Run API Backend**:
+   ```bash
+   # Jalankan Server FastAPI
+   $env:PYTHONPATH = "."; uvicorn src.api.main:app --reload
+   ```
+
+## 🔌 Integrasi Workload C & E
+
+### LLM Engine (Workload C)
+LLM dapat mengambil konteks inventaris melalui endpoint:
+`GET /api/v1/forecast`
+Sistem menyediakan **Smart Risk Flags** (Stockout, Overstock, Deadstock, Missed Revenue) sebagai input prompt agar LLM tidak halusinasi dan memberikan rekomendasi berbasis data riil.
+
+### Dashboard (Workload E)
+Dashboard dapat melakukan fetch data produk secara spesifik:
+`GET /api/v1/forecast?product_id={id}`
+Untuk sinkronisasi setelah training ulang, dashboard/orchestrator memanggil:
+`POST /api/v1/forecast/refresh`
+
+## 📅 Log Perubahan (27 April 2026)
+- **Implementasi Workload D (Backend API)** menggunakan FastAPI.
+- **In-Memory Caching Pattern**: Mempercepat respon API dengan memuat data ke memori saat startup.
+- **Stale Data Protection**: Validasi timestamp pada `forecast_results.json` (maks 24 jam).
+- **Smart Risk Flags Update**: Penambahan `missed_revenue_flag` untuk mendeteksi potensi omzet yang hilang.
+- **Enhanced SLR Pattern**: Repository layer kini mendukung pembacaan data prediksi yang aman dan terpusat.
 
 ## 📋 Progress Workload (Update April 2026)
 - [x] **Workload A (Data Engineering)**: Selesai & Diaudit (Skor 9/9).
 - [x] **Workload B (Predictive Modeling)**: Selesai & Diaudit (Skor 9/9).
 - [ ] **Workload C (LLM Engine)**: Tahap Pengembangan (Drafting Prompts).
-- [ ] **Workload D (API)**: Tahap Pengembangan.
+- [x] **Workload D (API)**: Selesai (FastAPI + Caching).
 - [ ] **Workload E (Dashboard)**: Tahap Pengembangan.
 
 ---
