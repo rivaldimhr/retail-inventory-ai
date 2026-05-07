@@ -14,7 +14,10 @@ class FeatureService:
         )
         
         metadata = df[['product_id', 'store_id', 'category', 'supplier_id', 'lead_time_days']].drop_duplicates('product_id')
-        df_reindexed = df.set_index(['date', 'product_id']).reindex(full_index, fill_value=0).reset_index()
+        df_indexed = df.set_index(['date', 'product_id']).reindex(full_index).reset_index()
+        numeric_cols = df_indexed.select_dtypes(include='number').columns
+        df_indexed[numeric_cols] = df_indexed[numeric_cols].fillna(0)
+        df_reindexed = df_indexed
         
         df_reindexed = df_reindexed.drop(columns=['store_id', 'category', 'supplier_id', 'lead_time_days'], errors='ignore')
         df_reindexed = pd.merge(df_reindexed, metadata, on='product_id', how='left')
@@ -60,6 +63,8 @@ class FeatureService:
 
     @staticmethod
     def calculate_rolling_features(df):
+        if 'product_id' not in df.columns:
+            df = df.reset_index()
         df = df.sort_values(['product_id', 'date'])
         df = df.set_index('date')
         
