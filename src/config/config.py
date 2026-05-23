@@ -8,5 +8,6 @@ class Config:
     PROCESSED_DATA_PATH = os.path.join(DATA_DIR, "processed_features.csv")
     MODEL_PATH = os.path.join(DATA_DIR, "demand_model.pkl")
     FORECAST_PATH = os.path.join(DATA_DIR, "forecast_results.json")
+    MBA_PATH = os.path.join(DATA_DIR, "mba_results.json")
 
 config = Config()

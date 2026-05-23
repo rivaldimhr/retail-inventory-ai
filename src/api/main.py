@@ -1,7 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from src.repositories.data_repository import ModelRepository
+from src.repositories.data_repository import DataRepository, ModelRepository
+from src.repositories.mba_repository import MBARepository
+from src.services.mba_service import MBAService
 from src.controllers.orchestrator import OrchestratorController
 from src.llm_engine.generator import generate_chat_response
 from typing import Optional
@@ -183,6 +185,41 @@ async def chat(req: ChatRequest):
         return {"status": "success", "response": response_text}
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# =========================
+# MBA ENDPOINTS
+# =========================
+@app.get("/api/v1/mba")
+async def get_mba():
+    data = MBARepository.load()
+    if not data:
+        raise HTTPException(
+            status_code=503,
+            detail="MBA data belum ada. Jalankan POST /api/v1/mba/refresh terlebih dahulu."
+        )
+    return {"status": "success", "data": data}
+
+
+@app.post("/api/v1/mba/refresh")
+async def refresh_mba(
+    min_support: float = 0.001,
+    min_confidence: float = 0.1,
+    min_lift: float = 1.0,
+):
+    try:
+        logging.info("Running MBA pipeline...")
+        df_raw = DataRepository.load_raw_data()
+        result = MBAService.run(df_raw, min_support, min_confidence, min_lift)
+        MBARepository.save(result)
+        return {
+            "status": "success",
+            "total_rules": result["summary"]["total_rules"],
+            "total_transactions": result["summary"]["total_transactions"],
+        }
+    except Exception as e:
+        logging.error(f"MBA pipeline failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =========================

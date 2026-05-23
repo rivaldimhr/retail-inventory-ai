@@ -1,7 +1,9 @@
 import pandas as pd
 from src.repositories.data_repository import DataRepository, ModelRepository
+from src.repositories.mba_repository import MBARepository
 from src.services.feature_service import FeatureService
 from src.services.ml_service import MLService
+from src.services.mba_service import MBAService
 
 class OrchestratorController:
     """
@@ -58,7 +60,17 @@ class OrchestratorController:
         print("ML Workflow Completed.")
         return forecast
 
+    @staticmethod
+    def run_mba_workflow(min_support=0.001, min_confidence=0.1, min_lift=1.0):
+        print("Starting MBA Workflow...")
+        df_raw = DataRepository.load_raw_data()
+        result = MBAService.run(df_raw, min_support, min_confidence, min_lift)
+        MBARepository.save(result)
+        print(f"MBA Workflow Completed. {result['summary']['total_rules']} rules found.")
+        return result
+
+
 if __name__ == "__main__":
-    # Script entrypoint sederhana untuk testing controller
     df = OrchestratorController.run_data_pipeline()
     OrchestratorController.run_ml_workflow()
+    OrchestratorController.run_mba_workflow()

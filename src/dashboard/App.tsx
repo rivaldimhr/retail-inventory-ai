@@ -4,6 +4,27 @@ import FloatingAIChat from "./FloatingAIChat";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+interface MBARule {
+  antecedents: string[];
+  consequents: string[];
+  support: number;
+  confidence: number;
+  lift: number;
+}
+
+interface MBASummary {
+  total_rules: number;
+  total_transactions: number;
+  total_products: number;
+}
+
+interface MBAData {
+  generated_at: string;
+  parameters: { min_support: number; min_confidence: number; min_lift: number };
+  rules: MBARule[];
+  summary: MBASummary;
+}
+
 interface DemandSignal {
   avg_daily_demand_forecast: number;
   avg_sales_30d_actual: number;
@@ -126,6 +147,9 @@ function RiskBadges({ flags }: { flags: RiskFlags }) {
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<"forecast" | "mba">("forecast");
+
+  // ── Forecast state ──
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [metadata, setMetadata]       = useState<ForecastMetadata | null>(null);
   const [health, setHealth]           = useState<HealthResponse | null>(null);
@@ -133,6 +157,50 @@ export default function App() {
   const [error, setError]             = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState("");
   const [searchQuery, setSearchQuery]       = useState("");
+
+  // ── MBA state ──
+  const [mbaData, setMbaData]       = useState<MBAData | null>(null);
+  const [mbaLoading, setMbaLoading] = useState(false);
+  const [mbaError, setMbaError]     = useState<string | null>(null);
+  const [mbaSearch, setMbaSearch]   = useState("");
+  const [mbaRefreshing, setMbaRefreshing] = useState(false);
+
+  const fetchMba = useCallback(async () => {
+    setMbaLoading(true);
+    setMbaError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/mba`);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error((d as { detail?: string }).detail ?? `HTTP ${res.status}`);
+      }
+      const json = await res.json();
+      setMbaData(json.data);
+    } catch (err) {
+      setMbaError(err instanceof Error ? err.message : "Gagal mengambil data MBA.");
+    } finally {
+      setMbaLoading(false);
+    }
+  }, []);
+
+  const runMbaRefresh = async () => {
+    setMbaRefreshing(true);
+    setMbaError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/mba/refresh`, { method: "POST" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error((d as { detail?: string }).detail ?? `HTTP ${res.status}`);
+      }
+      await fetchMba();
+    } catch (err) {
+      setMbaError(err instanceof Error ? err.message : "Gagal menjalankan MBA.");
+    } finally {
+      setMbaRefreshing(false);
+    }
+  };
+
+  useEffect(() => { if (activeTab === "mba" && !mbaData) fetchMba(); }, [activeTab, mbaData, fetchMba]);
 
   const fetchData = useCallback(async (category?: string) => {
     setLoading(true);
@@ -184,6 +252,12 @@ export default function App() {
       }
     : null;
 
+  const mbaFiltered = (mbaData?.rules ?? []).filter((r) => {
+    if (!mbaSearch) return true;
+    const q = mbaSearch.toLowerCase();
+    return r.antecedents.some((a) => a.includes(q)) || r.consequents.some((c) => c.includes(q));
+  });
+
   return (
     <div className="app">
       {/* ── Navbar ── */}
@@ -216,18 +290,136 @@ export default function App() {
         </div>
       </header>
 
+      {/* ── Tab Navigation ── */}
+      <nav className="tab-nav">
+        <button className={`tab-btn ${activeTab === "forecast" ? "tab-active" : ""}`} onClick={() => setActiveTab("forecast")}>
+          Inventory Forecast
+        </button>
+        <button className={`tab-btn ${activeTab === "mba" ? "tab-active" : ""}`} onClick={() => setActiveTab("mba")}>
+          Market Basket Analysis
+        </button>
+      </nav>
+
       <main className="main">
         {/* ── Summary Cards ── */}
-        <section className="cards-grid">
-          <SummaryCard label="Total Produk"   value={metadata?.total_count ?? "—"} icon={icons.box}     variant="sc-neutral" />
-          <SummaryCard label="Stockout Risk"  value={stockoutCount}  icon={icons.alert}   variant="sc-danger"  sub="coverage < lead time" />
-          <SummaryCard label="Overstock Risk" value={overstockCount} icon={icons.trend}   variant="sc-warning" sub="coverage > 30h & turun" />
-          <SummaryCard label="Deadstock"      value={deadstockCount} icon={icons.archive} variant="sc-muted"   sub="stok tinggi, sales ≈ 0" />
-          <SummaryCard label="Lost Sales"     value={lostSalesCount} icon={icons.dollar}  variant="sc-info"    sub="permintaan tak terpenuhi" />
-        </section>
+        {activeTab === "mba" && (
+          <section className="mba-section">
+            {/* MBA Summary Cards */}
+            <section className="cards-grid">
+              <SummaryCard label="Total Rules"       value={mbaData?.summary.total_rules ?? "—"}        icon={icons.trend}   variant="sc-neutral" />
+              <SummaryCard label="Total Transaksi"   value={mbaData?.summary.total_transactions ?? "—"} icon={icons.box}     variant="sc-neutral" />
+              <SummaryCard label="Total Produk"      value={mbaData?.summary.total_products ?? "—"}     icon={icons.archive} variant="sc-neutral" />
+            </section>
 
-        {/* ── Table Section ── */}
-        <section className="table-section">
+            {/* MBA Controls */}
+            <div className="table-section">
+              <div className="table-header">
+                <div className="table-title">
+                  <h2>Association Rules</h2>
+                  <span className="table-count">{mbaFiltered.length} rules</span>
+                </div>
+                <div className="table-controls">
+                  <div className="search-wrap">
+                    <span className="search-icon">{icons.search}</span>
+                    <input
+                      className="search-input"
+                      type="text"
+                      placeholder="Cari produk..."
+                      value={mbaSearch}
+                      onChange={(e) => setMbaSearch(e.target.value)}
+                    />
+                  </div>
+                  <button className="btn-refresh" onClick={runMbaRefresh} disabled={mbaRefreshing}>
+                    <span className="btn-icon">{icons.refresh}</span>
+                    {mbaRefreshing ? "Memproses..." : "Run Analysis"}
+                  </button>
+                </div>
+              </div>
+
+              {mbaLoading && <div className="state-box"><div className="spinner" /><p>Menjalankan Apriori...</p></div>}
+
+              {!mbaLoading && mbaError && (
+                <div className="state-box state-error">
+                  <div className="error-icon">{icons.alert}</div>
+                  <p className="error-title">Gagal Memuat MBA</p>
+                  <p className="error-detail">{mbaError}</p>
+                  <p className="error-hint">Klik <strong>Run Analysis</strong> untuk menjalankan pertama kali.</p>
+                </div>
+              )}
+
+              {!mbaLoading && !mbaError && mbaData && (
+                <div className="table-wrap">
+                  <table className="dtable mba-table">
+                    <colgroup>
+                      <col style={{ width: "30%" }} />
+                      <col style={{ width: "26%" }} />
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "20%" }} />
+                      <col style={{ width: "12%" }} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>If Bought</th>
+                        <th>Then Likely Buys</th>
+                        <th>
+                          <span className="mba-th-tip" data-tip="Seberapa sering kombinasi produk ini muncul dari semua transaksi. Makin tinggi = makin umum dibeli bersamaan.">
+                            Support <span className="mba-info">?</span>
+                          </span>
+                        </th>
+                        <th>
+                          <span className="mba-th-tip" data-tip="Dari semua pembeli produk A, berapa % yang juga beli produk B. Makin tinggi = kecenderungan makin kuat.">
+                            Confidence <span className="mba-info">?</span>
+                          </span>
+                        </th>
+                        <th>
+                          <span className="mba-th-tip mba-th-tip-left" data-tip="Seberapa jauh di atas kebetulan. >1 = hubungan nyata bukan kebetulan. >2 = hubungan sangat kuat.">
+                            Lift <span className="mba-info">?</span>
+                          </span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mbaFiltered.length === 0 ? (
+                        <tr><td colSpan={5} className="empty-cell">Tidak ada rules yang cocok.</td></tr>
+                      ) : (
+                        mbaFiltered.map((rule, i) => (
+                          <tr key={i}>
+                            <td><code className="pid">{rule.antecedents.join(" + ")}</code></td>
+                            <td><code className="pid">{rule.consequents.join(" + ")}</code></td>
+                            <td>{(rule.support * 100).toFixed(2)}%</td>
+                            <td>
+                              <div className="mba-conf-cell">
+                                <div className="mba-conf-bar-track">
+                                  <div className="mba-conf-bar-fill" style={{ width: `${rule.confidence * 100}%` }} />
+                                </div>
+                                <span className="mba-conf-label">{(rule.confidence * 100).toFixed(1)}%</span>
+                              </div>
+                            </td>
+                            <td className={rule.lift >= 2 ? "text-danger" : rule.lift >= 1.5 ? "text-warning" : ""}>
+                              {rule.lift.toFixed(2)}x
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {activeTab === "forecast" && <>
+          <section className="cards-grid">
+            <SummaryCard label="Total Produk"   value={metadata?.total_count ?? "—"} icon={icons.box}     variant="sc-neutral" />
+            <SummaryCard label="Stockout Risk"  value={stockoutCount}  icon={icons.alert}   variant="sc-danger"  sub="coverage < lead time" />
+            <SummaryCard label="Overstock Risk" value={overstockCount} icon={icons.trend}   variant="sc-warning" sub="coverage > 30h & turun" />
+            <SummaryCard label="Deadstock"      value={deadstockCount} icon={icons.archive} variant="sc-muted"   sub="stok tinggi, sales ≈ 0" />
+            <SummaryCard label="Lost Sales"     value={lostSalesCount} icon={icons.dollar}  variant="sc-info"    sub="permintaan tak terpenuhi" />
+          </section>
+
+          {/* ── Table Section ── */}
+          <section className="table-section">
           <div className="table-header">
             <div className="table-title">
               <h2>Inventory Forecast</h2>
@@ -334,6 +526,7 @@ export default function App() {
             </div>
           )}
         </section>
+        </>}
       </main>
 
       <footer className="footer">

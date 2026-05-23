@@ -10,6 +10,122 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Tab Navigation ──────────────────────────────────────────────────────── */
+.tab-nav {
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0 28px;
+  display: flex;
+  gap: 4px;
+}
+
+.tab-btn {
+  padding: 14px 20px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover { color: #4338ca; }
+
+.tab-active {
+  color: #4338ca;
+  border-bottom-color: #4338ca;
+  font-weight: 600;
+}
+
+.mba-section { display: contents; }
+
+/* ── MBA Table ────────────────────────────────────────────────────────────── */
+.mba-table { table-layout: fixed; width: 100%; }
+
+/* ── MBA Column Header Tooltip ───────────────────────────────────────────── */
+.mba-th-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: default;
+}
+
+.mba-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 50%;
+  background: #c7d2fe;
+  color: #4338ca;
+  cursor: help;
+  flex-shrink: 0;
+}
+
+.mba-th-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 220px;
+  background: #1e293b;
+  color: #f1f5f9;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  padding: 8px 10px;
+  border-radius: 8px;
+  white-space: normal;
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.mba-th-tip:hover::after { opacity: 1; }
+
+.mba-th-tip-left::after {
+  left: auto;
+  right: 0;
+}
+
+/* ── MBA Confidence Cell ──────────────────────────────────────────────────── */
+.mba-conf-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+.mba-conf-bar-track {
+  flex: 1;
+  max-width: 72px;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.mba-conf-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #a78bfa);
+  border-radius: 999px;
+  max-width: 100%;
+}
+.mba-conf-label {
+  min-width: 42px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
 /* ── App Shell ────────────────────────────────────────────────────────────── */
 .app {
   min-height: 100vh;
