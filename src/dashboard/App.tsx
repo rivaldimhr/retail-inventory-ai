@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import "./Dashboard.css";
 import FloatingAIChat from "./FloatingAIChat";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie,
+} from "recharts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -252,6 +256,30 @@ export default function App() {
       }
     : null;
 
+  const topDemandChartData = [...predictions]
+    .sort((a, b) => b.demand_signal.avg_daily_demand_forecast - a.demand_signal.avg_daily_demand_forecast)
+    .slice(0, 10)
+    .map((p) => ({
+      name: p.product_id.length > 14 ? p.product_id.slice(0, 14) + "…" : p.product_id,
+      Forecast: p.demand_signal.avg_daily_demand_forecast,
+      Aktual: p.demand_signal.avg_sales_30d_actual,
+    }));
+
+  const trendChartData = [
+    { name: "Naik",   value: predictions.filter((p) => p.trend_direction === "INCREASING").length, fill: "#10b981" },
+    { name: "Stabil", value: predictions.filter((p) => p.trend_direction === "STABLE").length,     fill: "#6366f1" },
+    { name: "Turun",  value: predictions.filter((p) => p.trend_direction === "DECREASING").length, fill: "#f43f5e" },
+  ].filter((d) => d.value > 0);
+
+  const okCount = predictions.filter((p) => !Object.values(p.risk_flags).some(Boolean)).length;
+  const riskChartData = [
+    { name: "OK",         value: okCount,        fill: "#10b981" },
+    { name: "Stockout",   value: stockoutCount,  fill: "#f43f5e" },
+    { name: "Overstock",  value: overstockCount, fill: "#f59e0b" },
+    { name: "Deadstock",  value: deadstockCount, fill: "#94a3b8" },
+    { name: "Lost Sales", value: lostSalesCount, fill: "#a855f7" },
+  ].filter((d) => d.value > 0);
+
   const mbaFiltered = (mbaData?.rules ?? []).filter((r) => {
     if (!mbaSearch) return true;
     const q = mbaSearch.toLowerCase();
@@ -417,6 +445,62 @@ export default function App() {
             <SummaryCard label="Deadstock"      value={deadstockCount} icon={icons.archive} variant="sc-muted"   sub="stok tinggi, sales ≈ 0" />
             <SummaryCard label="Lost Sales"     value={lostSalesCount} icon={icons.dollar}  variant="sc-info"    sub="permintaan tak terpenuhi" />
           </section>
+
+          {/* ── Charts ── */}
+          {!loading && !error && predictions.length > 0 && (
+            <section className="charts-grid">
+              <div className="chart-card">
+                <div className="chart-card-title">Top 10 Produk — Forecast vs Aktual 30d</div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={topDemandChartData} margin={{ top: 4, right: 8, left: -16, bottom: 48 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#64748b" }} angle={-35} textAnchor="end" interval={0} />
+                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
+                    <Legend wrapperStyle={{ fontSize: 12, paddingTop: 4 }} />
+                    <Bar dataKey="Forecast" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Aktual"   fill="#a78bfa" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="chart-card">
+                <div className="chart-card-title">Distribusi Status Risiko</div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={riskChartData}
+                      cx="50%" cy="50%"
+                      innerRadius={50} outerRadius={78}
+                      paddingAngle={3}
+                      dataKey="value"
+                      label={({ percent }) => `${((percent ?? 0) * 100).toFixed(0)}%`}
+                      labelLine={false}
+                    />
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="chart-card">
+                <div className="chart-card-title">Distribusi Tren Produk</div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={trendChartData}
+                      cx="50%" cy="50%"
+                      innerRadius={50} outerRadius={78}
+                      paddingAngle={3}
+                      dataKey="value"
+                      label={({ percent }) => `${((percent ?? 0) * 100).toFixed(0)}%`}
+                      labelLine={false}
+                    />
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+          )}
 
           {/* ── Table Section ── */}
           <section className="table-section">
