@@ -1,8 +1,10 @@
 import pandas as pd
 from src.repositories.data_repository import DataRepository, ModelRepository
+from src.repositories.mba_repository import MBARepository
+from src.services.feature_service import FeatureService
 from src.data_pipeline.pipeline import clean_and_reindex
-from src.data_pipeline.features import simulate_stock, calculate_rolling_features, add_calendar_features
 from src.services.ml_service import MLService
+from src.services.mba_service import MBAService
 
 class OrchestratorController:
     """
@@ -20,10 +22,18 @@ class OrchestratorController:
         # Preprocess + Reindex (digabung ke clean_and_reindex)
         df = clean_and_reindex(df_raw)
         
-        # Simulate stock FIRST, then calculate features based on that stock
-        df = df.groupby('product_id', group_keys=False).apply(simulate_stock)
-        df = calculate_rolling_features(df)
-        df = add_calendar_features(df)
+        # Initial Enrichment
+        df['store_id'] = 'STR-001'
+        df['category'] = 'General'
+        df['supplier_id'] = 'SUPP-001'
+        df['lead_time_days'] = 3
+        
+        # Services
+        df = FeatureService.reindex_to_daily(df)
+        # BUG #4 FIX: Simulate stock FIRST, then calculate features based on that stock
+        df = df.groupby('product_id', group_keys=False).apply(FeatureService.simulate_stock)
+        df = FeatureService.calculate_rolling_features(df)
+        df = FeatureService.add_calendar_features(df)
         
         # Save
         DataRepository.save_processed_data(df)
@@ -48,6 +58,17 @@ class OrchestratorController:
         print("ML Workflow Completed.")
         return forecast
 
+    @staticmethod
+    def run_mba_workflow(min_support=0.001, min_confidence=0.1, min_lift=1.0):
+        print("Starting MBA Workflow...")
+        df_raw = DataRepository.load_raw_data()
+        result = MBAService.run(df_raw, min_support, min_confidence, min_lift)
+        MBARepository.save(result)
+        print(f"MBA Workflow Completed. {result['summary']['total_rules']} rules found.")
+        return result
+
+
 if __name__ == "__main__":
     df = OrchestratorController.run_data_pipeline()
     OrchestratorController.run_ml_workflow()
+    OrchestratorController.run_mba_workflow()
