@@ -55,6 +55,8 @@ class Config:
 
     # ---- API ------------------------------------------------------------------
     STALE_AFTER_HOURS = 24
+    CHAT_RATE_PER_MINUTE = _env("CHAT_RATE_PER_MINUTE", 10)
+    CHAT_MAX_CHARS = 500
     CACHE_TTL_SECONDS = 3600
 
     # ---- LLM ------------------------------------------------------------------

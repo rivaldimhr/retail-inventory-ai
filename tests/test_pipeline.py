@@ -149,3 +149,17 @@ def test_chat_context_includes_named_product(daily):
     assert ctx["mentioned_products"][0]["product_name"] == name
     prompt = build_chat_prompt("test", ctx)
     assert name in prompt and "User question: test" in prompt
+
+
+# ---------------------------------------------------------------- bundled demo data
+
+def test_bundled_results_are_readable():
+    from src.repositories import bundled
+    f = bundled.forecast()
+    assert f["source"] == "bundled" and len(f["predictions"]) > 0
+    pid = f["predictions"][0]["product_id"]
+    h = bundled.history(pid, 30)
+    assert h["product_id"] == pid and len(h["data"]) == 30
+    assert bundled.history("NOPE", 30) == []
+    assert bundled.mba()["summary"]["total_rules"] > 0
+    assert "metrics" in bundled.metrics()

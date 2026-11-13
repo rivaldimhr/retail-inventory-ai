@@ -44,6 +44,9 @@ jobs:
       - run: npm run build -- --outDir dist-demo
         env:
           VITE_DEMO: "true"
+          # Set the repository variable CHAT_API_URL (Settings -> Secrets and variables -> Actions -> Variables)
+          # to the deployed backend URL to enable the real AI chat in the demo.
+          VITE_CHAT_API: ${{ vars.CHAT_API_URL }}
       - uses: actions/upload-artifact@v7
         with:
           name: demo-site

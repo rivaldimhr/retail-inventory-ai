@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import "./FloatingAIChat.css";
-import { api, demoChat, DEMO } from "./api";
+import { sendChat, warmUpChat } from "./api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,6 +100,7 @@ function ChatMessage({ msg }: { msg: Message }) {
 
 export default function FloatingAIChat({ inventoryContext }: FloatingAIChatProps) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (open) warmUpChat(); }, [open]);
   const [visible, setVisible] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -150,13 +151,7 @@ export default function FloatingAIChat({ inventoryContext }: FloatingAIChatProps
     setLoading(true);
 
     try {
-      const reply = DEMO
-        ? await demoChat(trimmed)
-        : (await api<{ response: string }>("/api/v1/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: trimmed, inventory_context: inventoryContext ?? null }),
-          })).response;
+      const reply = (await sendChat(trimmed, inventoryContext)).text;
       const aiMsg: Message = {
         id: crypto.randomUUID(),
         role: "assistant",

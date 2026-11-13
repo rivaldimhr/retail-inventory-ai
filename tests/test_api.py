@@ -44,3 +44,26 @@ def test_chat_without_key_explains_setup(client, monkeypatch):
     r = client.post("/api/v1/chat", json={"message": "halo"})
     assert r.status_code == 503 and "LLM_API_KEY" in r.json()["detail"]
     assert client.post("/api/v1/chat", json={"message": "  "}).status_code == 400
+
+
+def test_chat_rate_limit_and_length(client, monkeypatch):
+    from src.api import main
+    from src.config.config import config
+    monkeypatch.setattr(config, "CHAT_RATE_PER_MINUTE", 2)
+    main._chat_hits.clear()
+    assert client.post("/api/v1/chat", json={"message": "x" * 600}).status_code == 400
+    codes = [client.post("/api/v1/chat", json={"message": "halo"}).status_code for _ in range(3)]
+    assert codes[-1] == 429
+
+
+def test_api_falls_back_to_bundled_results(tmp_config):
+    """A fresh server without the dataset still serves the results shipped in public/demo."""
+    from src.api import main
+    main._cache["forecast"] = None
+    c = TestClient(main.app)
+    body = c.get("/api/v1/forecast").json()
+    assert body["metadata"]["total_count"] > 0 and body["metadata"]["stale"] is False
+    pid = body["data"][0]["product_id"]
+    assert c.get(f"/api/v1/products/{pid}/history").status_code == 200
+    assert c.get("/api/v1/health").json()["data_source"] == "bundled"
+    main._cache["forecast"] = None
