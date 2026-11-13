@@ -11,6 +11,31 @@
 
 > **Status Chat AI:** di demo online, Chat AI **belum berjalan dengan model AI**. Saat ini chat hanya berjalan dalam **mode demo** (menjawab otomatis dari data), karena API key LLM perlu disiapkan terlebih dahulu. Semua kode dan konfigurasi untuk mengaktifkannya sudah tersedia. Lihat [Mengaktifkan Chat AI](#-mengaktifkan-chat-ai).
 
+## 💡 Penjelasan Singkat
+
+**Retail Inventory AI adalah website yang membantu pemilik toko menjawab: "Barang apa yang harus saya pesan, berapa banyak, dan kapan?"**
+
+Bayangkan sebuah toko online yang menjual ratusan jenis barang. Setiap hari pemiliknya harus menebak barang mana yang akan laku. Kalau salah tebak, barang bisa habis (pembeli kecewa, penjualan hilang) atau malah menumpuk di gudang (uang tertahan). Website ini membantu menebaknya dengan data.
+
+**Cara kerjanya dalam 4 langkah:**
+1. **Membaca riwayat penjualan.** Sistem mempelajari lebih dari 1 juta transaksi asli dari sebuah toko online di Inggris.
+2. **Memperkirakan penjualan minggu depan.** Model machine learning menebak berapa unit setiap produk akan terjual dalam 7 hari ke depan.
+3. **Memberi saran.** Dari perkiraan itu dan stok yang ada, sistem memberi tahu produk mana yang perlu dipesan sekarang dan berapa unit, mana yang hampir habis, dan mana yang menumpuk.
+4. **Menemukan produk yang sering dibeli bersamaan.** Berguna untuk membuat paket bundling atau rekomendasi "sering dibeli bersama".
+
+**Yang bisa dilakukan di website:**
+- 📋 Melihat ringkasan kondisi stok dalam sekali lihat: berapa produk perlu dipesan, berapa yang hampir habis, berapa yang menumpuk.
+- 🔎 Mencari produk dan melihat grafik penjualan serta stoknya selama 90 hari.
+- 📥 Mengunduh daftar belanja (produk yang perlu dipesan) sebagai file CSV untuk dikirim ke supplier.
+- 🛒 Melihat pasangan produk yang sering dibeli bersamaan.
+- 💬 Bertanya lewat chat, misalnya "Produk apa yang harus dipesan hari ini?" (saat ini dalam mode demo, karena Chat AI butuh API key).
+
+**Coba langsung:** https://rivaldimhr.github.io/retail-inventory-ai/ (gratis, tanpa login, tanpa install).
+
+---
+
+## 🎯 Ringkasan Teknis
+
 Sistem analitik berbasis AI untuk membantu toko ritel mengelola stok. Sistem ini menjawab empat pertanyaan yang sering dihadapi manajer toko:
 
 | Pertanyaan manajer | Cara sistem menjawab |
