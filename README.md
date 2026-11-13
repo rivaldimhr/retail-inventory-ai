@@ -270,6 +270,14 @@ Pengaman yang sudah ada:
 
 ---
 
+## 🖼️ Tampilan
+
+| Market Basket | Tampilan HP |
+|---|---|
+| ![Market basket](docs/screenshot-market-basket.png) | ![Tampilan HP](docs/screenshot-mobile.png) |
+
+---
+
 ## 🗺️ Diagram Aktivitas Pengguna
 
 Diagram ini menunjukkan langkah yang dilakukan pengguna (manajer toko atau staf gudang) setiap kali memakai sistem. Penjelasan detail setiap langkah ada di [Panduan Pengguna](#-panduan-pengguna).
