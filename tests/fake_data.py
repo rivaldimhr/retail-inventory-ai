@@ -33,9 +33,9 @@ def make_raw(start="2009-12-01", end="2011-12-09", invoices_per_day=40, seed=7) 
     popularity = rng.dirichlet(np.ones(len(codes)) * 2)
     rows, inv_no = [], 489434
     for day in pd.date_range(start, end, freq="D"):
-        if day.dayofweek == 5:          # the real shop has no Saturday orders
+        if day.day_of_week == 5:          # the real shop has no Saturday orders
             continue
-        season = 1.0 + 1.5 * np.exp(-((day.dayofyear - 320) / 30) ** 2)   # pre-Christmas peak
+        season = 1.0 + 1.5 * np.exp(-((day.day_of_year - 320) / 30) ** 2)   # pre-Christmas peak
         n_inv = rng.poisson(invoices_per_day * season)
         for _ in range(n_inv):
             inv_no += 1

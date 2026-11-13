@@ -65,7 +65,7 @@ def add_features(daily: pd.DataFrame) -> pd.DataFrame:
         df["holidays_next_7"] = 0.0
 
     df["category_code"] = df["category"].astype("category").cat.codes
-    df["day_of_week"] = df["date"].dt.dayofweek
+    df["day_of_week"] = df["date"].dt.day_of_week
 
     # Number of orders (invoices) is steadier than units, because one wholesale order can be huge.
     orders = df.groupby("stock_code", sort=False)["invoices"]
