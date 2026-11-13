@@ -1,3 +1,5 @@
+import { answerDemo, type DemoData } from "./demoChat";
+
 // Backend address. Set VITE_API_BASE (e.g. https://my-api.onrender.com) for a deployed backend.
 // Empty string = same origin, which works with the Vite dev proxy in vite.config.ts.
 export const API_BASE: string = import.meta.env.VITE_API_BASE ?? "";
@@ -52,60 +54,15 @@ export async function api<T = any>(path: string, init?: RequestInit): Promise<T>
   throw new Error("Fitur ini tidak tersedia di mode demo.");
 }
 
-// ─── Demo chat: rule-based answers from the forecast data ─────────────────────
-
-interface DemoProduct {
-  product_id: string; product_name: string; current_stock: number; on_order: number;
-  stock_coverage_days: number; lead_time_days: number; recommended_order_qty: number;
-  revenue_at_risk: number; lost_revenue_30d: number; trend_direction: string;
-  demand_signal: { forecast_7d: number; lost_sales_30d: number };
-  risk_flags: Record<string, boolean>;
-}
-
-const fmt = (v: number) => `£${Math.round(v).toLocaleString("en-GB")}`;
-const line = (p: DemoProduct) =>
-  `• ${p.product_name}: stok ${p.current_stock}${p.on_order ? ` (+${p.on_order} dikirim)` : ""}, ` +
-  `prediksi 7 hari ${p.demand_signal.forecast_7d} unit, cukup ${p.stock_coverage_days >= 999 ? "∞" : p.stock_coverage_days} hari`;
+// ─── Demo chat: rule-based answers from the exported data ─────────────────────
 
 export async function demoChat(message: string): Promise<string> {
-  const { data } = await demoFile<{ data: DemoProduct[] }>("forecast.json");
-  const q = message.toLowerCase();
-  const named = data.filter((p) => q.includes(p.product_name.toLowerCase()) || q.includes(p.product_id.toLowerCase()));
-  const note = "\n\n(Mode demo: Chat AI belum aktif karena API key perlu disiapkan. Jawaban ini dibuat otomatis dari data.)";
-
-  if (named.length) {
-    const p = named[0];
-    const labels: Record<string, string> = { out_of_stock: "stok kosong", stockout_risk: "berisiko habis", overstock_risk: "overstock",
-      deadstock_risk: "deadstock", promo_opportunity: "peluang promo", missed_revenue_flag: "sempat kehilangan penjualan" };
-    const flags = Object.entries(p.risk_flags).filter(([, v]) => v).map(([k]) => labels[k] ?? k);
-    return `${line(p)}. Waktu kirim supplier ${p.lead_time_days} hari. ` +
-      (p.recommended_order_qty > 0 ? `Saran: pesan ${p.recommended_order_qty} unit sekarang. ` : "Belum perlu dipesan. ") +
-      (flags.length ? `Status: ${flags.join(", ")}.` : "Status aman.") +
-      (p.demand_signal.lost_sales_30d ? ` Dalam 30 hari terakhir ${p.demand_signal.lost_sales_30d} unit permintaan tidak terlayani (${fmt(p.lost_revenue_30d)}).` : "") + note;
-  }
-  if (/pesan|order|beli|restock|reorder/.test(q)) {
-    const rows = data.filter((p) => p.recommended_order_qty > 0).sort((a, b) => b.revenue_at_risk - a.revenue_at_risk);
-    if (!rows.length) return "Saat ini tidak ada produk yang perlu dipesan: semua stok masih di atas titik pesan ulang." + note;
-    return `Ada ${rows.length} produk yang perlu dipesan:\n` +
-      rows.slice(0, 5).map((p) => `${line(p)} → pesan ${p.recommended_order_qty} unit`).join("\n") + note;
-  }
-  if (/habis|stockout|kosong|kritis|risiko|risk/.test(q)) {
-    const rows = data.filter((p) => p.risk_flags.stockout_risk || p.risk_flags.out_of_stock);
-    const lost = data.filter((p) => p.risk_flags.missed_revenue_flag).sort((a, b) => b.lost_revenue_30d - a.lost_revenue_30d);
-    return (rows.length ? `${rows.length} produk sedang kosong atau berisiko habis sebelum kiriman tiba:\n${rows.slice(0, 5).map(line).join("\n")}` : "Tidak ada produk yang berisiko habis sebelum kiriman berikutnya.") +
-      (lost.length ? `\n\nProduk yang paling banyak kehilangan penjualan dalam 30 hari terakhir:\n${lost.slice(0, 3).map((p) => `• ${p.product_name}: ${fmt(p.lost_revenue_30d)}`).join("\n")}` : "") + note;
-  }
-  if (/diskon|promo|overstock|menumpuk|berlebih|deadstock/.test(q)) {
-    const rows = data.filter((p) => p.risk_flags.overstock_risk || p.risk_flags.deadstock_risk || p.risk_flags.promo_opportunity)
-      .sort((a, b) => b.stock_coverage_days - a.stock_coverage_days);
-    if (!rows.length) return "Tidak ada produk dengan stok berlebih saat ini." + note;
-    return `${rows.length} produk punya stok berlebih atau penjualannya turun. Kandidat diskon:\n` + rows.slice(0, 5).map(line).join("\n") + note;
-  }
-  const reorder = data.filter((p) => p.recommended_order_qty > 0).length;
-  const stockout = data.filter((p) => p.risk_flags.stockout_risk).length;
-  const over = data.filter((p) => p.risk_flags.overstock_risk).length;
-  return `Ringkasan: ${data.length} produk dipantau, ${reorder} perlu dipesan, ${stockout} berisiko habis, ${over} overstock. ` +
-    "Coba tanyakan \"produk apa yang harus dipesan?\", \"produk mana yang berisiko habis?\", \"produk mana yang sebaiknya didiskon?\", atau sebut nama produk." + note;
+  const [forecast, mba, metrics] = await Promise.all([
+    demoFile<DemoData["forecast"]>("forecast.json"),
+    demoFile<DemoData["mba"]>("mba.json").catch(() => ({ data: { rules: [] } })),
+    demoFile<DemoData["metrics"]>("metrics.json").catch(() => null as unknown as DemoData["metrics"]),
+  ]);
+  return answerDemo(message, { forecast, mba, metrics });
 }
 
 // ─── Chat entry point ─────────────────────────────────────────────────────────

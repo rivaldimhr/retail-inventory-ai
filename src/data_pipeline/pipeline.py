@@ -8,12 +8,12 @@ import pandas as pd
 # Order matters: the first matching rule wins.
 CATEGORY_RULES = [
     ("Christmas & seasonal", ("CHRISTMAS", "XMAS", "ADVENT", "EASTER", "SNOWFLAKE", "REINDEER", "SANTA")),
-    ("Baking & party", ("CAKE", "BAKING", "CUPCAKE", "COOKIE", "DOILIES", "DOILY", "PARTY", "BUNTING", "NAPKIN", "BALLOON")),
+    ("Baking & party", ("CAKE", "BAKING", "CUPCAKE", "COOKIE", "PARTY", "BUNTING", "NAPKIN", "BALLOON")),
     ("Bags & storage", ("BAG", "TOTE", "STORAGE", "BOX", "TIN", "BASKET", "HAMPER", "SHOPPER", "PURSE", "WASHBAG", "CASE")),
     ("Accessories & warmers", ("NECKLACE", "BRACELET", "EARRINGS", "RING", "UMBRELLA", "HAIR", "SCARF", "HAND WARMER",
                                "HOT WATER BOTTLE", "SLIPPER", "MITTEN", "PARASOL", "SILK FAN", "KEY FOB")),
     ("Kitchen & dining", ("MUG", "CUP", "TEA", "PLATE", "BOWL", "JAR", "BOTTLE", "SPOON", "APRON", "LUNCH", "TRAY", "GLASS",
-                          "JELLY", "JAM ", "POPCORN", "MOULD", "CUTLERY", "COASTER", "TOAST", "EGG ", "RECIPE", "KITCHEN", "CHOPSTICK", "JUG", "PEG", "GLOVE", "WASHING UP")),
+                          "JELLY", "JAM ", "POPCORN", "MOULD", "CUTLERY", "COASTER", "TOAST", "EGG ", "RECIPE", "KITCHEN", "CHOPSTICK", "JUG", "PEG", "GLOVE", "WASHING UP", "DOILIES")),
     ("Candles & lighting", ("CANDLE", "T-LIGHT", "TLIGHT", "LIGHT", "LANTERN", "LAMP")),
     ("Stationery & gift wrap", ("CARD", "WRAP", "PAPER", "NOTEBOOK", "PEN", "PENCIL", "STICKER", "TAPE", "ENVELOPE", "CHALK",
                                 "RIBBON", "GIFT", "TISSUE", "TAG", "STAMP", "ERASER", "RULER", "JOURNAL")),

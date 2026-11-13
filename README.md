@@ -61,50 +61,39 @@ Sitasi: Chen, D. (2012). *Online Retail II* [Dataset]. UCI Machine Learning Repo
 
 Dijalankan pada Online Retail II lengkap: **1.003.214 baris transaksi bersih, 39.516 invoice, 4.707 produk**. Prediksi dibuat untuk 300 produk terlaris.
 
-**Akurasi prediksi 7 hari** (data uji 2011-10-07 s.d. 2011-12-01, yaitu musim puncak menjelang Natal):
+**Akurasi prediksi 7 hari** (data uji 2011-10-07 s.d. 2011-12-01, yaitu musim puncak menjelang Natal). Akurasi = 100% − WAPE, yaitu total selisih prediksi dibagi total penjualan sebenarnya:
 
-| Metode | MAE (unit/produk/minggu) | WAPE | Bias |
+| Metode | Akurasi | Rata-rata meleset (unit/produk/minggu) | Bias |
 |---|---|---|---|
-| **Model (gradient boosting, Poisson)** | **91.0** | **46.4%** | **-2.3%** |
-| Rata-rata 28 hari × 7 | 93.0 | 47.4% | -6.3% |
-| Sama dengan 7 hari terakhir | 107.7 | 54.9% | -1.9% |
-
-- Model **2.2% lebih akurat (MAE)** dari metode pembanding terbaik (rata-rata 28 hari), dan biasnya juga lebih kecil, artinya prediksinya tidak cenderung terlalu rendah. Ini penting untuk stok: prediksi yang terlalu rendah membuat barang cepat habis. Metode "sama dengan 7 hari terakhir" memang biasnya paling kecil, tetapi meleset jauh lebih besar (MAE 108).
-- Selisihnya kecil karena permintaan toko ini sangat tidak teratur: banyak pembeli grosir yang sesekali memesan dalam jumlah besar. WAPE sekitar 46% menunjukkan bahwa permintaan mingguan per produk memang sulit ditebak, sehingga stok pengaman tetap diperlukan.
-- Model dengan target log sempat diuji dan MAE-nya sedikit lebih kecil, tetapi biasnya sekitar −20%. Model itu tidak dipakai karena akan membuat toko kekurangan stok.
-- Hari terakhir dataset (9 Desember 2011) hanya berisi transaksi setengah hari, jadi otomatis diabaikan. Data dianggap berakhir pada 8 Desember 2011.
-
-**Akurasi dalam persen** (akurasi = 100% − WAPE, yaitu total selisih prediksi dibagi total penjualan sebenarnya):
-
-| Metode | Akurasi | Rata-rata meleset per produk/minggu |
-|---|---|---|
-| **Model (gradient boosting)** | **53.6%** | **91.0 unit** |
-| Rata-rata 28 hari | 52.6% | 93.0 unit |
-| Sama dengan 7 hari terakhir | 45.1% | 107.7 unit |
+| **Model (gradient boosting, Poisson)** | **53.7%** | **90.8** | **-2.6%** |
+| Rata-rata 28 hari × 7 | 52.6% | 93.0 | -6.3% |
+| Sama dengan 7 hari terakhir | 45.1% | 107.7 | -1.9% |
 
 <details>
 <summary>Akurasi per kategori</summary>
 
 | Kategori | Akurasi |
 |---|---|
-| Christmas & seasonal | 69.9% |
-| Garden | 68.5% |
-| Accessories & warmers | 58.9% |
-| Bags & storage | 57.2% |
-| Stationery & gift wrap | 53.0% |
-| Kitchen & dining | 52.3% |
-| Other | 47.6% |
-| Baking & party | 47.5% |
+| Christmas & seasonal | 70.1% |
+| Garden | 67.1% |
+| Accessories & warmers | 59.9% |
+| Bags & storage | 57.4% |
+| Stationery & gift wrap | 53.1% |
+| Kitchen & dining | 52.4% |
+| Other | 47.3% |
 | Home decor | 46.8% |
-| Candles & lighting | 46.2% |
-| Toys & games | 44.4% |
+| Candles & lighting | 45.7% |
+| Baking & party | 45.1% |
+| Toys & games | 44.1% |
 
 </details>
 
 **Cara membaca angka ini:**
-- **Per produk per minggu**, prediksi rata-rata meleset sekitar 46%. Ini wajar untuk toko dengan banyak pembeli grosir: satu pesanan besar bisa melipatgandakan penjualan satu produk dalam seminggu, dan itu tidak bisa ditebak dari data masa lalu.
-- **Untuk total semua produk**, prediksi hanya meleset 2.3% (bias -2.3%). Gambaran besarnya hampir tepat; yang sulit ditebak adalah naik-turun per produk.
-- Karena itu sistem tetap memakai **stok pengaman** untuk menutup ketidakpastian per produk.
+- Model **2.4% lebih akurat (MAE)** dari metode pembanding terbaik (rata-rata 28 hari), dan biasnya juga lebih kecil, artinya prediksinya tidak cenderung terlalu rendah. Ini penting untuk stok: prediksi yang terlalu rendah membuat barang cepat habis. Metode "sama dengan 7 hari terakhir" memang biasnya paling kecil, tetapi meleset jauh lebih besar.
+- **Per produk per minggu**, prediksi rata-rata meleset sekitar 46%. Ini wajar untuk toko dengan banyak pembeli grosir: satu pesanan besar bisa melipatgandakan penjualan satu produk dalam seminggu, dan itu tidak bisa ditebak dari data masa lalu. Karena itu sistem tetap memakai **stok pengaman**.
+- **Untuk total semua produk**, prediksi hanya meleset 2.6%. Gambaran besarnya hampir tepat; yang sulit ditebak adalah naik-turun per produk.
+- Model dengan target log sempat diuji dan MAE-nya sedikit lebih kecil, tetapi biasnya sekitar −20%. Model itu tidak dipakai karena akan membuat toko kekurangan stok.
+- Hari terakhir dataset (9 Desember 2011) hanya berisi transaksi setengah hari, jadi otomatis diabaikan. Data dianggap berakhir pada 8 Desember 2011.
 
 **Contoh pasangan produk dari market basket** (setiap pasangan ditampilkan sekali, ke arah yang paling kuat): pembeli *Coffee Mug Dog + Ball Design* 75% juga membeli *Coffee Mug Cat + Bird Design* (lift 46). Produk seri *Poppy's Playhouse* (bedroom, living room, kitchen) juga hampir selalu dibeli bersamaan.
 
@@ -271,7 +260,22 @@ VITE_DEMO=true npm run build             # build dashboard versi demo ke folder 
 
 Setiap push ke `main`, GitHub Actions membangun versi demo dan menyimpannya di branch `gh-pages`.
 
-Di mode demo, Chat AI menjawab otomatis dari data dengan aturan sederhana (misalnya daftar produk yang perlu dipesan). Setiap jawaban diberi keterangan bahwa model AI belum aktif.
+Di mode demo, Chat AI menjawab otomatis dari data dengan aturan (`src/dashboard/demoChat.ts`). Setiap jawaban diberi keterangan bahwa model AI belum aktif. Pertanyaan yang bisa dijawab:
+
+| Topik | Contoh pertanyaan |
+|---|---|
+| Pemesanan | "Produk apa yang harus dipesan hari ini?" |
+| Stok kosong dan risiko habis | "Produk mana yang stoknya kosong atau berisiko habis?" |
+| Ringkasan | "Ringkasan kondisi stok" |
+| Produk tertentu | "Kenapa Jumbo Bag Red Retrospot berisiko?" (nama boleh sebagian, misalnya "lunch bag") |
+| Kategori | "Ringkasan kategori kitchen", "Kategori mana yang paling berisiko?" |
+| Terlaris dan tren | "Produk terlaris minggu depan?", "Produk yang trennya turun?" |
+| Diskon dan deadstock | "Produk mana yang sebaiknya didiskon?", "Ada deadstock?" |
+| Penjualan hilang | "Berapa penjualan yang hilang?" |
+| Market basket | "Produk apa yang sering dibeli bersamaan?", "Ide bundling untuk jumbo bag doily" |
+| Akurasi model | "Seberapa akurat prediksinya?" |
+
+Saat Chat AI aktif, model AI menerima data yang sama (ringkasan stok, produk paling mendesak, terlaris, ringkasan kategori, pasangan market basket, akurasi model, dan detail produk yang disebut), sehingga bisa menjawab topik-topik di atas dengan bahasa yang lebih bebas.
 
 ---
 

@@ -60,7 +60,7 @@ def clean_transactions(df: pd.DataFrame, country: str = "") -> pd.DataFrame:
     df = df.copy()
     df["invoice"] = df["invoice"].astype(str).str.strip()
     df["stock_code"] = df["stock_code"].astype(str).str.strip().str.upper()
-    df["description"] = df["description"].astype(str).str.strip().str.upper()
+    df["description"] = df["description"].astype(str).str.replace(r"\s+", " ", regex=True).str.strip().str.upper()
     df["invoice_date"] = pd.to_datetime(df["invoice_date"], errors="coerce")
     df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce")
     df["price"] = pd.to_numeric(df["price"], errors="coerce")

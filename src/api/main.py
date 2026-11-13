@@ -205,7 +205,9 @@ def chat(req: ChatRequest, request: Request):
     if _rate_limited(client):
         raise HTTPException(429, "Terlalu banyak pertanyaan. Tunggu sebentar lalu coba lagi.")
     forecast = _forecast()
-    context = build_context(message, forecast) if forecast else (req.inventory_context or None)
+    mba = MBARepository.load() or bundled.mba()
+    metrics = ModelRepository.load_metrics() or bundled.metrics()
+    context = build_context(message, forecast, mba, metrics) if forecast else (req.inventory_context or None)
     try:
         return {"status": "success", "response": generate_chat_response(message, context)}
     except LLMNotConfigured as e:

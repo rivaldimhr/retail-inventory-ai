@@ -29,9 +29,14 @@ interface FloatingAIChatProps {
 
 
 const QUICK_PROMPTS = [
-  "Produk apa yang harus saya pesan hari ini, dan berapa unit?",
-  "Produk mana yang paling berisiko kehabisan stok?",
+  "Produk apa yang harus saya pesan hari ini?",
+  "Produk mana yang stoknya kosong atau berisiko habis?",
+  "Ringkasan kondisi stok",
+  "Produk terlaris minggu depan?",
+  "Produk apa yang sering dibeli bersamaan?",
+  "Seberapa akurat prediksinya?",
   "Produk mana yang sebaiknya didiskon?",
+  "Berapa penjualan yang hilang?",
 ];
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
