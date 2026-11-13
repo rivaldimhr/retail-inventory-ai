@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import "./Dashboard.css";
 import FloatingAIChat from "./FloatingAIChat";
 import {
@@ -155,6 +155,9 @@ function RiskBadges({ flags }: { flags: RiskFlags }) {
 function ProductDetail({ p, currency, onClose }: { p: Prediction; currency: string; onClose: () => void }) {
   const [history, setHistory] = useState<HistoryPoint[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [p.product_id]);
 
   useEffect(() => {
     setHistory(null);
@@ -165,7 +168,7 @@ function ProductDetail({ p, currency, onClose }: { p: Prediction; currency: stri
   }, [p.product_id]);
 
   return (
-    <div className="detail-panel">
+    <div className="detail-panel" ref={panelRef}>
       <div className="detail-head">
         <div>
           <div className="detail-title">{p.product_name}</div>
@@ -490,12 +493,12 @@ export default function App() {
               <div className="chart-card">
                 <div className="chart-card-title">Top 10 produk: prediksi 7 hari vs 7 hari terakhir</div>
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={topDemandChartData} margin={{ top: 4, right: 8, left: -16, bottom: 48 }}>
+                  <BarChart data={topDemandChartData} margin={{ top: 4, right: 8, left: -16, bottom: 56 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#64748b" }} angle={-35} textAnchor="end" interval={0} />
                     <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
                     <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
-                    <Legend wrapperStyle={{ fontSize: 12, paddingTop: 4 }} />
+                    <Legend verticalAlign="top" wrapperStyle={{ fontSize: 12, paddingBottom: 6 }} />
                     <Bar dataKey="Prediksi 7 hari" fill="#6366f1" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="7 hari terakhir" fill="#a78bfa" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -506,7 +509,7 @@ export default function App() {
                 <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
                     <Pie data={riskChartData} cx="50%" cy="50%" innerRadius={50} outerRadius={78} paddingAngle={3} dataKey="value"
-                      label={({ percent }) => `${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false} />
+                      label={({ percent }) => ((percent ?? 0) >= 0.03 ? `${((percent ?? 0) * 100).toFixed(0)}%` : "")} labelLine={false} />
                     <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                   </PieChart>
