@@ -1,152 +1,166 @@
+"""Retail Inventory AI - REST API.
+
+Run from the project root:
+    uvicorn src.api.main:app --reload
+"""
+import logging
+import time
+from typing import Optional
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from src.repositories.data_repository import DataRepository, ModelRepository
-from src.repositories.mba_repository import MBARepository
-from src.services.mba_service import MBAService
+
+from src.config.config import config
 from src.controllers.orchestrator import OrchestratorController
-from src.llm_engine.generator import generate_chat_response
-from typing import Optional
-import time
-import logging
+from src.llm_engine.generator import LLMNotConfigured, generate_chat_response, llm_status
+from src.repositories.data_repository import DataRepository, ModelRepository, file_age_hours
+from src.repositories.mba_repository import MBARepository
+from src.services.chat_context import build_context
 
-# =========================
-# CONFIG LOGGING
-# =========================
 logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("api")
 
-# =========================
-# INIT APP
-# =========================
 app = FastAPI(
-    title="AIforBusiness Forecast API",
-    version="2.0.0",
-    description="Retail Inventory Optimization API with ML Forecasting"
+    title="Retail Inventory AI API",
+    version="3.0.0",
+    description="7-day demand forecast, stock recommendations, market basket analysis and an AI assistant "
+                "for retail inventory, built on the Online Retail II dataset.",
 )
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# =========================
-# CACHE CONFIG
-# =========================
-forecast_cache = {
-    "data": None,
-    "loaded_at": None
-}
-
-CACHE_TTL_SECONDS = 3600  # 1 jam
-
-# =========================
-# CORS (Dashboard Integration)
-# =========================
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # bisa dibatasi di production
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# =========================
-# CACHE HANDLER
-# =========================
+_cache = {"forecast": None, "loaded_at": 0.0}
 
 
-def refresh_cache() -> bool:
-    try:
-        data = ModelRepository.load_forecast()
-
-        if not data or "error" in data:
-            logging.warning("Forecast data missing or outdated")
-            return False
-
-        forecast_cache["data"] = data
-        forecast_cache["loaded_at"] = time.time()
-
-        logging.info("Cache successfully refreshed")
-        return True
-
-    except Exception as e:
-        logging.error(f"Failed to load forecast: {e}")
-        return False
+def _forecast() -> Optional[dict]:
+    """Forecast from memory, reloaded from disk at most once per CACHE_TTL_SECONDS."""
+    if _cache["forecast"] is None or time.time() - _cache["loaded_at"] > config.CACHE_TTL_SECONDS:
+        _cache["forecast"] = ModelRepository.load_forecast()
+        _cache["loaded_at"] = time.time()
+    return _cache["forecast"]
 
 
-def is_cache_expired() -> bool:
-    if not forecast_cache["loaded_at"]:
-        return True
-
-    return (time.time() - forecast_cache["loaded_at"]) > CACHE_TTL_SECONDS
-
-
-# =========================
-# STARTUP EVENT
-# =========================
-@app.on_event("startup")
-async def startup_event():
-    logging.info("Starting API & loading cache...")
-    refresh_cache()
+def _require_forecast() -> dict:
+    data = _forecast()
+    if not data:
+        raise HTTPException(503, "Belum ada hasil forecast. Jalankan pipeline: python -m src.controllers.orchestrator "
+                                 "atau POST /api/v1/forecast/refresh.")
+    return data
 
 
-# =========================
-# ROOT ENDPOINT
-# =========================
+def _is_stale() -> bool:
+    age = file_age_hours(config.FORECAST_PATH)
+    return age is None or age > config.STALE_AFTER_HOURS
+
+
 @app.get("/")
-async def root():
+def root():
+    return {"message": "Retail Inventory AI API is running", "docs": "/docs"}
+
+
+@app.get("/api/v1/health")
+def health():
+    data = _forecast()
     return {
-        "message": "AIforBusiness API is running",
-        "status": "active",
-        "workload": "D"
+        "status": "ok",
+        "cache_loaded": data is not None,
+        "data_stale": _is_stale(),
+        "forecast_age_hours": file_age_hours(config.FORECAST_PATH),
+        "data_as_of": data.get("data_as_of") if data else None,
+        "llm": llm_status(),
     }
 
 
-# =========================
-# GET FORECAST
-# =========================
 @app.get("/api/v1/forecast")
-async def get_forecast(
-    product_id: Optional[str] = None,
-    category: Optional[str] = None
-):
-    # Refresh cache jika kosong / expired
-    if not forecast_cache["data"] or is_cache_expired():
-        if not refresh_cache():
-            raise HTTPException(
-                status_code=503,
-                detail="Forecast data unavailable or outdated. Please refresh."
-            )
-
-    raw_data = forecast_cache["data"]
-    predictions = raw_data.get("predictions", [])
-
-    # =========================
-    # FILTERING
-    # =========================
+def get_forecast(product_id: Optional[str] = None, category: Optional[str] = None):
+    raw = _require_forecast()
+    predictions = raw.get("predictions", [])
     if product_id:
-        predictions = [
-            p for p in predictions
-            if p.get("product_id", "").lower() == product_id.lower()
-        ]
-
+        predictions = [p for p in predictions if p["product_id"].lower() == product_id.lower()]
     if category:
-        predictions = [
-            p for p in predictions
-            if p.get("category", "").lower() == category.lower()
-        ]
-
+        predictions = [p for p in predictions if p["category"].lower() == category.lower()]
     return {
         "status": "success",
         "metadata": {
-            "generated_at": raw_data.get("generated_at"),
-            "cached_at": time.strftime(
-                '%Y-%m-%d %H:%M:%S',
-                time.localtime(forecast_cache["loaded_at"])
-            ),
-            "total_count": len(predictions)
+            "generated_at": raw.get("generated_at"),
+            "data_as_of": raw.get("data_as_of"),
+            "currency": raw.get("currency", "GBP"),
+            "horizon_days": raw.get("horizon_days", config.HORIZON_DAYS),
+            "model": raw.get("model"),
+            "stale": _is_stale(),
+            "total_count": len(predictions),
         },
-        "data": predictions
+        "data": predictions,
     }
 
 
-# =========================
-# CHAT ENDPOINT
-# =========================
+@app.get("/api/v1/products/{product_id}/history")
+def product_history(product_id: str, days: int = 90):
+    """Daily sales, stock and lost sales of one product, for charts."""
+    try:
+        daily = DataRepository.load_daily()
+    except FileNotFoundError:
+        raise HTTPException(503, "Data harian belum ada. Jalankan pipeline terlebih dahulu.")
+    rows = daily[daily["stock_code"].str.lower() == product_id.lower()].sort_values("date").tail(max(7, min(days, 400)))
+    if rows.empty:
+        raise HTTPException(404, f"Produk {product_id} tidak ditemukan.")
+    return {
+        "status": "success",
+        "product_id": rows["stock_code"].iloc[0],
+        "product_name": str(rows["description"].iloc[0]).title(),
+        "data": [
+            {"date": str(r.date.date()), "units_sold": int(r.units_sold), "stock": int(r.stock_qty),
+             "lost_sales": int(r.lost_sales), "received": int(r.received)}
+            for r in rows.itertuples()
+        ],
+    }
+
+
+@app.get("/api/v1/metrics")
+def get_metrics():
+    data = ModelRepository.load_metrics()
+    if not data:
+        raise HTTPException(503, "Belum ada hasil evaluasi model. Jalankan pipeline terlebih dahulu.")
+    return {"status": "success", "data": data}
+
+
+@app.post("/api/v1/forecast/refresh")
+def refresh_forecast(rebuild_data: bool = False):
+    """Retrain and re-forecast. rebuild_data=true also re-reads the raw dataset (slower)."""
+    try:
+        if rebuild_data:
+            OrchestratorController.run_data_pipeline()
+        snapshot = OrchestratorController.run_ml_workflow()
+    except FileNotFoundError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        log.exception("Pipeline failed")
+        raise HTTPException(500, f"Gagal memperbarui forecast: {e}")
+    _cache["forecast"], _cache["loaded_at"] = snapshot, time.time()
+    return {"status": "success", "data_points": len(snapshot["predictions"]), "data_as_of": snapshot["data_as_of"]}
+
+
+@app.get("/api/v1/mba")
+def get_mba():
+    data = MBARepository.load()
+    if not data:
+        raise HTTPException(503, "Data market basket belum ada. Jalankan POST /api/v1/mba/refresh terlebih dahulu.")
+    return {"status": "success", "data": data}
+
+
+@app.post("/api/v1/mba/refresh")
+def refresh_mba(min_support: float = config.MBA_MIN_SUPPORT, min_confidence: float = config.MBA_MIN_CONFIDENCE,
+                min_lift: float = config.MBA_MIN_LIFT):
+    try:
+        result = OrchestratorController.run_mba_workflow(
+            min_support=min_support, min_confidence=min_confidence, min_lift=min_lift)
+    except FileNotFoundError:
+        raise HTTPException(400, "Transaksi bersih belum ada. Jalankan pipeline data terlebih dahulu.")
+    return {"status": "success", "total_rules": result["summary"]["total_rules"],
+            "total_transactions": result["summary"]["total_transactions"]}
+
+
+# ---------------------------------------------------------------- chat
 
 class ChatRequest(BaseModel):
     message: str
@@ -154,96 +168,15 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/api/v1/chat")
-async def chat(req: ChatRequest):
-    if not req.message or not req.message.strip():
-        raise HTTPException(status_code=400, detail="Message cannot be empty.")
-
-    context = req.inventory_context
-    if context is None and forecast_cache.get("data"):
-        raw = forecast_cache["data"]
-        predictions = raw.get("predictions", [])
-        stockout = [p for p in predictions if p.get("risk_flags", {}).get("stockout_risk")]
-        overstock = [p for p in predictions if p.get("risk_flags", {}).get("overstock_risk")]
-        deadstock = [p for p in predictions if p.get("risk_flags", {}).get("deadstock_risk")]
-        lost_sales = [p for p in predictions if p.get("risk_flags", {}).get("missed_revenue_flag")]
-        top_risks = sorted(
-            [p for p in predictions if any(p.get("risk_flags", {}).values())],
-            key=lambda p: p.get("stock_coverage_days", 999)
-        )
-        context = {
-            "total_count": len(predictions),
-            "stockout_count": len(stockout),
-            "overstock_count": len(overstock),
-            "deadstock_count": len(deadstock),
-            "lost_sales_count": len(lost_sales),
-            "generated_at": raw.get("generated_at", "unknown"),
-            "top_risks": top_risks[:10],
-        }
-
+def chat(req: ChatRequest):
+    message = (req.message or "").strip()
+    if not message:
+        raise HTTPException(400, "Pesan tidak boleh kosong.")
+    forecast = _forecast()
+    context = build_context(message, forecast) if forecast else (req.inventory_context or None)
     try:
-        response_text = generate_chat_response(req.message.strip(), context)
-        return {"status": "success", "response": response_text}
+        return {"status": "success", "response": generate_chat_response(message, context)}
+    except LLMNotConfigured as e:
+        raise HTTPException(503, str(e))
     except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-
-
-# =========================
-# MBA ENDPOINTS
-# =========================
-@app.get("/api/v1/mba")
-async def get_mba():
-    data = MBARepository.load()
-    if not data:
-        raise HTTPException(
-            status_code=503,
-            detail="MBA data belum ada. Jalankan POST /api/v1/mba/refresh terlebih dahulu."
-        )
-    return {"status": "success", "data": data}
-
-
-@app.post("/api/v1/mba/refresh")
-async def refresh_mba(
-    min_support: float = 0.001,
-    min_confidence: float = 0.1,
-    min_lift: float = 1.0,
-):
-    try:
-        logging.info("Running MBA pipeline...")
-        df_raw = DataRepository.load_raw_data()
-        result = MBAService.run(df_raw, min_support, min_confidence, min_lift)
-        MBARepository.save(result)
-        return {
-            "status": "success",
-            "total_rules": result["summary"]["total_rules"],
-            "total_transactions": result["summary"]["total_transactions"],
-        }
-    except Exception as e:
-        logging.error(f"MBA pipeline failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# =========================
-# REFRESH PIPELINE (IMPORTANT)
-# =========================
-@app.post("/api/v1/forecast/refresh")
-async def refresh_forecast():
-    try:
-        logging.info("Running full pipeline...")
-
-        OrchestratorController.run_data_pipeline()
-        forecast = OrchestratorController.run_ml_workflow()
-
-        refresh_cache()
-
-        return {
-            "status": "success",
-            "message": "Forecast successfully refreshed",
-            "data_points": len(forecast.get("predictions", []))
-        }
-
-    except Exception as e:
-        logging.error(f"Pipeline failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to refresh forecast: {str(e)}"
-        )
+        raise HTTPException(502, str(e))

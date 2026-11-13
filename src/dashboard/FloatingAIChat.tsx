@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import "./FloatingAIChat.css";
+import { API_BASE } from "./api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,7 @@ interface InventoryContext {
   overstock_count: number;
   deadstock_count: number;
   lost_sales_count: number;
+  reorder_count?: number;
   generated_at: string;
 }
 
@@ -25,12 +27,11 @@ interface FloatingAIChatProps {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const API_BASE = "http://localhost:8000";
 
 const QUICK_PROMPTS = [
-  "Produk mana yang paling berisiko stockout?",
-  "Berikan rekomendasi untuk overstock.",
-  "Ringkasan kondisi inventory hari ini.",
+  "Produk apa yang harus saya pesan hari ini, dan berapa unit?",
+  "Produk mana yang paling berisiko kehabisan stok?",
+  "Produk mana yang sebaiknya didiskon?",
 ];
 
 // ─── Icons ────────────────────────────────────────────────────────────────────

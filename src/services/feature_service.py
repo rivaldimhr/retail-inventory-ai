@@ -1,104 +1,72 @@
-import pandas as pd
+"""Features for the 7-day demand forecast.
+
+Every feature for day t uses only information available at the end of day t,
+and the target is the total demand of the NEXT 7 days (t+1 .. t+7). No future data leaks in.
+"""
 import numpy as np
-import holidays
+import pandas as pd
 
-class FeatureService:
-    @staticmethod
-    def reindex_to_daily(df):
-        df['date'] = pd.to_datetime(df['date'])
-        all_products = df['product_id'].unique()
-        date_range = pd.date_range(df['date'].min(), df['date'].max(), freq='D')
-        
-        full_index = pd.MultiIndex.from_product(
-            [date_range, all_products], names=['date', 'product_id']
-        )
-        
-        metadata = df[['product_id', 'store_id', 'category', 'supplier_id', 'lead_time_days']].drop_duplicates('product_id')
-        df_indexed = df.set_index(['date', 'product_id']).reindex(full_index).reset_index()
-        numeric_cols = df_indexed.select_dtypes(include='number').columns
-        df_indexed[numeric_cols] = df_indexed[numeric_cols].fillna(0)
-        df_reindexed = df_indexed
-        
-        df_reindexed = df_reindexed.drop(columns=['store_id', 'category', 'supplier_id', 'lead_time_days'], errors='ignore')
-        df_reindexed = pd.merge(df_reindexed, metadata, on='product_id', how='left')
-        df_reindexed['is_imputed'] = df_reindexed['units_sold'] == 0
-        
-        return df_reindexed
+from src.config.config import config
 
-    @staticmethod
-    def simulate_stock(group, initial_stock=100, reorder_point=20, reorder_qty=80):
-        stock = initial_stock
-        stocks = []
-        lost_sales = []
-        pending_deliveries = [] # List of (delivery_date, qty)
-        
-        lead_time = int(group['lead_time_days'].iloc[0]) if 'lead_time_days' in group.columns else 3
-        
-        for idx, row in group.iterrows():
-            current_date = row['date']
-            
-            # 1. Cek kiriman yang sampai hari ini
-            deliveries_today = [qty for d_date, qty in pending_deliveries if d_date <= current_date]
-            stock += sum(deliveries_today)
-            pending_deliveries = [(d_date, qty) for d_date, qty in pending_deliveries if d_date > current_date]
-            
-            # 2. Kurangi stok & Catat Lost Sales (Celah #1 Audit)
-            sold_requested = row['units_sold']
-            actual_sold = min(stock, sold_requested)
-            lost = max(0, sold_requested - actual_sold)
-            
-            stock = max(0, stock - sold_requested)
-            
-            # 3. Cek apakah perlu reorder
-            if stock <= reorder_point and not pending_deliveries:
-                arrival_date = current_date + pd.Timedelta(days=lead_time)
-                pending_deliveries.append((arrival_date, reorder_qty))
-            
-            stocks.append(stock)
-            lost_sales.append(lost)
-            
-        group['stock_qty'] = stocks
-        group['lost_sales'] = lost_sales
-        return group
+FEATURES = [
+    "units_today", "mean_7", "mean_14", "mean_28", "mean_56", "std_28",
+    "nonzero_days_28", "days_since_last_sale", "trend_ratio",
+    "price", "price_ratio_28", "product_mean_to_date",
+    "month_next", "days_to_christmas", "holidays_next_7", "category_code",
+]
+TARGET = "target_next_7"
 
-    @staticmethod
-    def calculate_rolling_features(df):
-        if 'product_id' not in df.columns:
-            df = df.reset_index()
-        df = df.sort_values(['product_id', 'date'])
-        df = df.set_index('date')
-        
-        # Rolling averages
-        df['avg_sales_7d'] = df.groupby('product_id')['units_sold'].transform(
-            lambda x: x.rolling(window='7D', min_periods=1).mean()
-        )
-        df['avg_sales_30d'] = df.groupby('product_id')['units_sold'].transform(
-            lambda x: x.rolling(window='30D', min_periods=1).mean()
-        )
-        
-        # Perbaikan Celah #2 Audit: Filter False INCREASING pada data sparse
-        def get_trend(y):
-            if len(y) > 1:
-                non_zero_days = (y > 0).sum()
-                if non_zero_days < 2: # Butuh minimal 2 titik data asli untuk tren
-                    return 0.0
-                return round(np.polyfit(range(len(y)), y, 1)[0], 4)
-            return 0.0
 
-        df['sales_trend_7d'] = df.groupby('product_id')['units_sold'].transform(
-            lambda x: x.rolling(window='7D', min_periods=1).apply(get_trend)
-        )
-        
-        df = df.reset_index()
-        # Coverage dihitung di sini agar sinkron dengan stock_qty final (Bug #4)
-        df['stock_coverage'] = df['stock_qty'] / df['avg_sales_7d'].replace(0, 0.001)
-        return df
+def _uk_holidays(years):
+    try:
+        import holidays
+        return set(holidays.UK(years=years).keys())
+    except Exception:  # library not installed: run without holiday feature
+        return set()
 
-    @staticmethod
-    def add_calendar_features(df):
-        id_holidays = holidays.Indonesia(years=[2014, 2015])
-        df['date'] = pd.to_datetime(df['date'])
-        df['day_of_week'] = df['date'].dt.dayofweek
-        df['is_weekend'] = df['day_of_week'].isin([5, 6])
-        df['is_holiday'] = df['date'].apply(lambda x: x.date() in id_holidays)
-        return df
+
+def add_features(daily: pd.DataFrame) -> pd.DataFrame:
+    df = daily.sort_values(["stock_code", "date"]).copy()
+    g = df.groupby("stock_code", sort=False)["units_sold"]
+
+    df["units_today"] = df["units_sold"]
+    for w in (7, 14, 28, 56):
+        df[f"mean_{w}"] = g.transform(lambda s, w=w: s.rolling(w, min_periods=1).mean())
+    df["std_28"] = g.transform(lambda s: s.rolling(28, min_periods=2).std()).fillna(0)
+    df["nonzero_days_28"] = g.transform(lambda s: (s > 0).astype(float).rolling(28, min_periods=1).sum())
+    df["product_mean_to_date"] = g.transform(lambda s: s.expanding().mean())
+    df["trend_ratio"] = (df["mean_7"] + 0.1) / (df["mean_28"] + 0.1)
+
+    # Days since the product last sold (0 = sold today).
+    sold = df["units_sold"] > 0
+    last_sale = df["date"].where(sold).groupby(df["stock_code"]).ffill()
+    df["days_since_last_sale"] = (df["date"] - last_sale).dt.days.fillna(999).clip(upper=999)
+
+    price_mean = df.groupby("stock_code", sort=False)["price"].transform(lambda s: s.rolling(28, min_periods=1).mean())
+    df["price_ratio_28"] = (df["price"] / price_mean).replace([np.inf, -np.inf], 1).fillna(1)
+
+    # Calendar features describe the coming week, which is known in advance.
+    next_day = df["date"] + pd.Timedelta(days=1)
+    df["month_next"] = next_day.dt.month
+    christmas = pd.to_datetime(df["date"].dt.year.astype(str) + "-12-25")
+    days_to = (christmas - df["date"]).dt.days
+    df["days_to_christmas"] = days_to.where(days_to >= 0, days_to + 365).clip(upper=180)
+
+    hol = _uk_holidays(sorted(df["date"].dt.year.unique().tolist() + [int(df["date"].dt.year.max()) + 1]))
+    if hol:
+        hol_days = pd.Series(1, index=pd.to_datetime(sorted(hol)))
+        all_days = pd.date_range(df["date"].min(), df["date"].max() + pd.Timedelta(days=8))
+        flags = hol_days.reindex(all_days, fill_value=0)
+        next7 = flags[::-1].rolling(7, min_periods=1).sum()[::-1].shift(-1).fillna(0)
+        df["holidays_next_7"] = df["date"].map(next7).fillna(0)
+    else:
+        df["holidays_next_7"] = 0.0
+
+    df["category_code"] = df["category"].astype("category").cat.codes
+
+    # Target: total demand over the next 7 days (NaN where the future is not observed).
+    rev = df.groupby("stock_code", sort=False)["units_sold"].transform(
+        lambda s: s[::-1].rolling(config.HORIZON_DAYS, min_periods=config.HORIZON_DAYS).sum()[::-1].shift(-1)
+    )
+    df[TARGET] = rev
+    return df

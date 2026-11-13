@@ -1,74 +1,79 @@
-import pandas as pd
+"""Runs the full workflow: raw data -> daily demand + stock -> forecast + decisions -> market basket.
+
+Usage (from the project root):
+    python -m src.controllers.orchestrator
+"""
+import logging
+import time
+
+from src.config.config import config
+from src.data_pipeline.loader import clean_transactions, read_raw
+from src.data_pipeline.pipeline import build_daily_demand, select_top_products
 from src.repositories.data_repository import DataRepository, ModelRepository
 from src.repositories.mba_repository import MBARepository
-from src.services.feature_service import FeatureService
-from src.data_pipeline.pipeline import clean_and_reindex
-from src.services.ml_service import MLService
-from src.services.mba_service import MBAService
+from src.services import inventory_service, mba_service, ml_service
+from src.services.feature_service import add_features
+from src.services.stock_simulation import simulate_stock
+
+log = logging.getLogger("orchestrator")
+
 
 class OrchestratorController:
-    """
-    Controller utama yang mengatur alur kerja dari data mentah hingga prediksi.
-    Menerapkan pola MVC/SLR untuk skalabilitas.
-    """
-    
     @staticmethod
     def run_data_pipeline():
-        print("Starting Data Pipeline...")
-        
-        # Load
-        df_raw = DataRepository.load_raw_data()
-        
-        # Preprocess + Reindex (digabung ke clean_and_reindex)
-        df = clean_and_reindex(df_raw)
-        
-        # Initial Enrichment
-        df['store_id'] = 'STR-001'
-        df['category'] = 'General'
-        df['supplier_id'] = 'SUPP-001'
-        df['lead_time_days'] = 3
-        
-        # Services
-        df = FeatureService.reindex_to_daily(df)
-        # BUG #4 FIX: Simulate stock FIRST, then calculate features based on that stock
-        df = df.groupby('product_id', group_keys=False).apply(FeatureService.simulate_stock)
-        df = FeatureService.calculate_rolling_features(df)
-        df = FeatureService.add_calendar_features(df)
-        
-        # Save
-        DataRepository.save_processed_data(df)
-        print("Data Pipeline Completed.")
-        return df
+        t0 = time.time()
+        log.info("Reading %s", config.RAW_DATA_PATH)
+        tx = clean_transactions(read_raw(config.RAW_DATA_PATH), country=config.COUNTRY)
+        DataRepository.save_clean(tx)
+        log.info("Clean transactions: %d lines, %d invoices, %d products",
+                 len(tx), tx["invoice"].nunique(), tx["stock_code"].nunique())
+
+        products = select_top_products(tx, config.TOP_N_PRODUCTS)
+        daily = simulate_stock(build_daily_demand(tx, products))
+        DataRepository.save_daily(daily)
+        log.info("Daily demand + stock simulation for %d products (%.0fs)", len(products), time.time() - t0)
+        return daily
 
     @staticmethod
     def run_ml_workflow():
-        print("Starting ML Workflow...")
-        
-        # Load
-        df = DataRepository.load_processed_data()
-        
-        # Train
-        model = MLService.train(df)
+        t0 = time.time()
+        daily = DataRepository.load_daily()
+        features = add_features(daily)
+
+        metrics = ml_service.evaluate(features)
+        ModelRepository.save_metrics(metrics)
+        log.info("Evaluation: model MAE %.2f vs best baseline (improvement %.1f%%)",
+                 metrics["metrics"]["model"]["mae"], metrics["mae_improvement_vs_best_baseline"] * 100)
+
+        model = ml_service.train_final(features)
         ModelRepository.save_model(model)
-        
-        # Predict
-        forecast = MLService.predict_latest(df, model)
-        ModelRepository.save_forecast(forecast)
-        
-        print("ML Workflow Completed.")
-        return forecast
+        latest = ml_service.forecast_latest(model, features)
+        snapshot = inventory_service.build_snapshot(daily, latest)
+        snapshot["model"] = {
+            "algorithm": metrics["algorithm"],
+            "mae_7d": metrics["metrics"]["model"]["mae"],
+            "wape_7d": metrics["metrics"]["model"]["wape"],
+            "mae_improvement_vs_best_baseline": metrics["mae_improvement_vs_best_baseline"],
+        }
+        ModelRepository.save_forecast(snapshot)
+        log.info("Forecast for %d products saved (%.0fs)", len(snapshot["predictions"]), time.time() - t0)
+        return snapshot
 
     @staticmethod
-    def run_mba_workflow(min_support=0.001, min_confidence=0.1, min_lift=1.0):
-        print("Starting MBA Workflow...")
-        df_raw = DataRepository.load_raw_data()
-        result = MBAService.run(df_raw, min_support, min_confidence, min_lift)
+    def run_mba_workflow(**params):
+        result = mba_service.run(DataRepository.load_clean(), **params)
         MBARepository.save(result)
-        print(f"MBA Workflow Completed. {result['summary']['total_rules']} rules found.")
+        log.info("Market basket: %d rules from %d invoices",
+                 result["summary"]["total_rules"], result["summary"]["total_transactions"])
         return result
+
+    @classmethod
+    def run_all(cls):
+        cls.run_data_pipeline()
+        cls.run_ml_workflow()
+        cls.run_mba_workflow()
 
 
 if __name__ == "__main__":
-    df = OrchestratorController.run_data_pipeline()
-    OrchestratorController.run_ml_workflow()
-    OrchestratorController.run_mba_workflow()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    OrchestratorController.run_all()

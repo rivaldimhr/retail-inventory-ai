@@ -1,65 +1,100 @@
-import pandas as pd
-import xgboost as xgb
+"""7-day demand forecast: training, time-based evaluation against baselines, prediction."""
 from datetime import datetime
 
-class MLService:
-    FEATURE_COLS = ['day_of_week', 'is_weekend', 'is_holiday', 'avg_sales_7d', 'avg_sales_30d', 'sales_trend_7d', 'stock_qty']
-    TARGET_COL = 'units_sold'
+import numpy as np
+import pandas as pd
 
-    @staticmethod
-    def train(df):
-        X = df[MLService.FEATURE_COLS]
-        y = df[MLService.TARGET_COL]
-        model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5)
-        model.fit(X, y)
-        return model
+from src.config.config import config
+from src.services.feature_service import FEATURES, TARGET
 
-    @staticmethod
-    def predict_latest(df, model):
-        latest_data = df.sort_values('date').groupby('product_id').tail(1)
-        predictions = []
-        
-        for _, row in latest_data.iterrows():
-            X_input = pd.DataFrame([row[MLService.FEATURE_COLS]])
-            forecast_val = float(model.predict(X_input)[0])
-            
-            # 1. Penentuan Tren yang Lebih Bersih
-            trend = "STABLE"
-            if row['sales_trend_7d'] > 0.01: trend = "INCREASING"
-            elif row['sales_trend_7d'] < -0.01: trend = "DECREASING"
 
-            # 2. Smart Risk Flags (Celah #2 Audit - Business Logic)
-            # Overstock bermakna: Stok banyak DAN tren menurun
-            is_overstock = bool(row['stock_coverage'] > 30 and trend == "DECREASING")
-            # Deadstock bermakna: Stok banyak DAN penjualan hampir nol
-            is_deadstock = bool(row['stock_coverage'] > 30 and row['avg_sales_30d'] < 0.1)
-            # Stockout bermakna: Coverage lebih rendah dari lead time
-            is_stockout = bool(row['stock_coverage'] < row['lead_time_days'])
+def make_model():
+    """XGBoost when installed; otherwise scikit-learn's gradient boosting (same idea, no extra dependency)."""
+    try:
+        from xgboost import XGBRegressor
+        return XGBRegressor(
+            n_estimators=400, learning_rate=0.05, max_depth=6,
+            subsample=0.8, colsample_bytree=0.8, min_child_weight=5,
+            objective="reg:squarederror", n_jobs=-1, random_state=42,
+        )
+    except ImportError:
+        from sklearn.ensemble import HistGradientBoostingRegressor
+        return HistGradientBoostingRegressor(max_iter=400, learning_rate=0.05, random_state=42)
 
-            predictions.append({
-                "product_id": row['product_id'],
-                "store_id": row['store_id'],
-                "category": row['category'],
-                "current_stock": int(row['stock_qty']),
-                "demand_signal": {
-                    "avg_daily_demand_forecast": round(forecast_val, 2),
-                    "avg_sales_30d_actual": round(float(row['avg_sales_30d']), 3), # Celah Final Audit
-                    "lost_sales_last_snapshot": int(row.get('lost_sales', 0)),
-                    "unmet_demand_flag": bool(row.get('lost_sales', 0) > 0)
-                },
-                "stock_coverage_days": round(row['stock_coverage'], 1),
-                "trend_direction": trend,
-                "risk_flags": {
-                    "stockout_risk": is_stockout,
-                    "overstock_risk": is_overstock,
-                    "deadstock_risk": is_deadstock,
-                    "promo_opportunity": bool(trend == "DECREASING" and row['stock_qty'] > 50),
-                    "missed_revenue_flag": bool(row.get('lost_sales', 0) > 0 and not is_stockout)
-                },
-                "confidence_score": 0.85 # NOTE: Placeholder value for Workload D/E
-            })
-        
-        return {
-            "generated_at": datetime.now().isoformat(),
-            "predictions": predictions
-        }
+
+def model_name(model) -> str:
+    return type(model).__name__
+
+
+def fit(df: pd.DataFrame):
+    """Train on log1p(target) so a few very large wholesale weeks do not dominate the loss."""
+    model = make_model()
+    model.fit(df[FEATURES], np.log1p(df[TARGET]))
+    return model
+
+
+def predict(model, df: pd.DataFrame) -> np.ndarray:
+    return np.clip(np.expm1(model.predict(df[FEATURES])), 0, None)
+
+
+def _scores(y: np.ndarray, pred: np.ndarray) -> dict:
+    err = np.abs(y - pred)
+    total = y.sum()
+    return {
+        "mae": round(float(err.mean()), 3),
+        "rmse": round(float(np.sqrt(((y - pred) ** 2).mean())), 3),
+        "wape": round(float(err.sum() / total), 4) if total > 0 else None,
+        "bias": round(float((pred.sum() - total) / total), 4) if total > 0 else None,
+    }
+
+
+def evaluate(features: pd.DataFrame) -> dict:
+    """Hold out the last TEST_DAYS days. Training rows end HORIZON days before the test period,
+    so no training target overlaps the test weeks. Compare with two simple baselines."""
+    labeled = features.dropna(subset=[TARGET])
+    last = labeled["date"].max()
+    test_start = last - pd.Timedelta(days=config.TEST_DAYS - 1)
+    train_end = test_start - pd.Timedelta(days=config.HORIZON_DAYS + 1)
+    train = labeled[labeled["date"] <= train_end]
+    test = labeled[labeled["date"] >= test_start]
+
+    model = fit(train)
+    y = test[TARGET].to_numpy()
+    results = {
+        "model": _scores(y, predict(model, test)),
+        "baseline_last_7_days": _scores(y, test["mean_7"].to_numpy() * config.HORIZON_DAYS),
+        "baseline_avg_28_days": _scores(y, test["mean_28"].to_numpy() * config.HORIZON_DAYS),
+    }
+    best_baseline = min(results["baseline_last_7_days"]["mae"], results["baseline_avg_28_days"]["mae"])
+    improvement = (best_baseline - results["model"]["mae"]) / best_baseline if best_baseline else 0.0
+
+    by_category = []
+    test = test.assign(_pred=predict(model, test))
+    for cat, part in test.groupby("category"):
+        s = _scores(part[TARGET].to_numpy(), part["_pred"].to_numpy())
+        by_category.append({"category": cat, "mae": s["mae"], "wape": s["wape"], "rows": int(len(part))})
+
+    return {
+        "generated_at": datetime.now().isoformat(),
+        "algorithm": model_name(model),
+        "target": f"units sold in the next {config.HORIZON_DAYS} days, per product",
+        "train_period": [str(train["date"].min().date()), str(train_end.date())],
+        "test_period": [str(test_start.date()), str(last.date())],
+        "train_rows": int(len(train)),
+        "test_rows": int(len(test)),
+        "metrics": results,
+        "mae_improvement_vs_best_baseline": round(float(improvement), 4),
+        "by_category": sorted(by_category, key=lambda r: r["category"]),
+    }
+
+
+def train_final(features: pd.DataFrame):
+    """Retrain on every labeled day before forecasting the real future."""
+    return fit(features.dropna(subset=[TARGET]))
+
+
+def forecast_latest(model, features: pd.DataFrame) -> pd.DataFrame:
+    """Forecast the next 7 days from the last observed day of every product."""
+    latest = features[features["date"] == features["date"].max()].copy()
+    latest["forecast_7d"] = predict(model, latest)
+    return latest

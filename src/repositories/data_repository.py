@@ -1,50 +1,70 @@
-import pandas as pd
 import json
-import pickle
 import os
+import pickle
 import time
+
+import pandas as pd
+
 from src.config.config import config
 
+
+def _write_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _read_json(path):
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+def file_age_hours(path):
+    if not os.path.exists(path):
+        return None
+    return round((time.time() - os.path.getmtime(path)) / 3600, 1)
+
+
 class DataRepository:
-# ... (rest of DataRepository)
     @staticmethod
-    def load_raw_data():
-        return pd.read_csv(config.RAW_DATA_PATH)
+    def save_clean(df: pd.DataFrame):
+        df.to_csv(config.CLEAN_DATA_PATH, index=False)
 
     @staticmethod
-    def save_processed_data(df):
-        df.to_csv(config.PROCESSED_DATA_PATH, index=False)
+    def load_clean() -> pd.DataFrame:
+        return pd.read_csv(config.CLEAN_DATA_PATH, parse_dates=["invoice_date", "date"],
+                           dtype={"invoice": str, "stock_code": str})
 
     @staticmethod
-    def load_processed_data():
-        return pd.read_csv(config.PROCESSED_DATA_PATH)
+    def save_daily(df: pd.DataFrame):
+        df.to_csv(config.DAILY_DATA_PATH, index=False)
+
+    @staticmethod
+    def load_daily() -> pd.DataFrame:
+        return pd.read_csv(config.DAILY_DATA_PATH, parse_dates=["date"], dtype={"stock_code": str})
+
 
 class ModelRepository:
     @staticmethod
-    def save_model(model_obj):
-        with open(config.MODEL_PATH, 'wb') as f:
-            pickle.dump(model_obj, f)
+    def save_model(model):
+        with open(config.MODEL_PATH, "wb") as f:
+            pickle.dump(model, f)
 
     @staticmethod
-    def load_model():
-        with open(config.MODEL_PATH, 'rb') as f:
-            return pickle.load(f)
-
-    @staticmethod
-    def save_forecast(forecast_data):
-        with open(config.FORECAST_PATH, 'w') as f:
-            json.dump(forecast_data, f, indent=2)
+    def save_forecast(data: dict):
+        _write_json(config.FORECAST_PATH, data)
 
     @staticmethod
     def load_forecast():
-        if not os.path.exists(config.FORECAST_PATH):
-            return None
-            
-        # Timestamp Check: Cegah data stale > 24 jam
-        file_age_hours = (time.time() - os.path.getmtime(config.FORECAST_PATH)) / 3600
-        if file_age_hours > 24:
-            # Data dianggap usang, perlu rerun pipeline
-            return {"error": "Forecast data outdated", "age_hours": round(file_age_hours, 1)}
+        """Returns the forecast even when it is old; callers decide what 'stale' means."""
+        return _read_json(config.FORECAST_PATH)
 
-        with open(config.FORECAST_PATH, 'r') as f:
-            return json.load(f)
+    @staticmethod
+    def save_metrics(data: dict):
+        _write_json(config.METRICS_PATH, data)
+
+    @staticmethod
+    def load_metrics():
+        return _read_json(config.METRICS_PATH)

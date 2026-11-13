@@ -1,36 +1,72 @@
+"""Turn clean transactions into a complete daily demand table per product."""
+import re
+
+import numpy as np
 import pandas as pd
 
-def clean_and_reindex(df_raw):
+# Keyword rules for product categories (Online Retail II has no category column).
+# Order matters: the first matching rule wins.
+CATEGORY_RULES = [
+    ("Christmas & seasonal", ("CHRISTMAS", "XMAS", "ADVENT", "EASTER", "SNOWFLAKE", "REINDEER", "SANTA")),
+    ("Baking & party", ("CAKE", "BAKING", "CUPCAKE", "PARTY", "BUNTING", "NAPKIN", "BALLOON")),
+    ("Bags & storage", ("BAG", "TOTE", "STORAGE", "BOX", "TIN", "BASKET", "HAMPER")),
+    ("Kitchen & dining", ("MUG", "CUP", "TEA", "PLATE", "BOWL", "JAR", "BOTTLE", "SPOON", "APRON", "LUNCH", "TRAY", "GLASS")),
+    ("Candles & lighting", ("CANDLE", "T-LIGHT", "TLIGHT", "LIGHT", "LANTERN", "LAMP")),
+    ("Stationery & gift wrap", ("CARD", "WRAP", "PAPER", "NOTEBOOK", "PEN", "PENCIL", "STICKER", "TAPE", "ENVELOPE", "CHALK")),
+    ("Toys & games", ("TOY", "GAME", "DOLL", "PUZZLE", "SKITTLES", "DOMINOES", "SPACEBOY")),
+    ("Home decor", ("HEART", "SIGN", "FRAME", "DECORATION", "ORNAMENT", "HANGING", "WREATH", "CUSHION", "CLOCK", "MIRROR", "DOORSTOP", "HOOK", "BUNNY")),
+    ("Garden", ("GARDEN", "PLANT", "FLOWER POT", "WATERING", "BIRD")),
+    ("Fashion & accessories", ("NECKLACE", "BRACELET", "EARRINGS", "RING", "UMBRELLA", "PURSE", "HAIR", "SCARF")),
+]
+
+
+_CATEGORY_PATTERNS = [
+    (name, re.compile(r"(?<![A-Z])(?:" + "|".join(re.escape(k) for k in words) + ")"))
+    for name, words in CATEGORY_RULES
+]
+
+
+def categorize(description: str) -> str:
+    """Keywords must start a word, so 'TIN' matches 'TIN BOX' but not 'PAINTING'."""
+    text = str(description).upper()
+    for category, pattern in _CATEGORY_PATTERNS:
+        if pattern.search(text):
+            return category
+    return "Other"
+
+
+def select_top_products(tx: pd.DataFrame, top_n: int) -> list:
+    """Most frequently ordered products (by number of distinct invoices)."""
+    counts = tx.groupby("stock_code")["invoice"].nunique().sort_values(ascending=False)
+    return counts.head(top_n).index.tolist()
+
+
+def build_daily_demand(tx: pd.DataFrame, products: list) -> pd.DataFrame:
+    """Daily units sold per product, with every calendar day present (missing days = 0).
+
+    Very large one-off wholesale orders are capped at each product's 99th percentile of
+    non-zero daily demand, so a single bulk order does not dominate the model.
     """
-    Membersihkan data mentah dan mengubahnya menjadi kalender harian yang utuh
-    """
-    # Agregasi penjualan harian
-    df_raw['Date'] = pd.to_datetime(df_raw['Date'], format='%d-%m-%Y')
-    df = df_raw.groupby(['Date', 'itemDescription']).size().reset_index(name='units_sold')
-    df.columns = ['date', 'product_id', 'units_sold']
-    
-    # Penambahan metadata dasar
-    df['store_id'] = 'STR-001'
-    df['category'] = 'General'
-    df['supplier_id'] = 'SUPP-001'
-    df['lead_time_days'] = 3
-    
-    # Pembuatan kalender harian penuh (Reindexing)
-    all_products = df['product_id'].unique()
-    date_range = pd.date_range(df['date'].min(), df['date'].max(), freq='D')
-    
-    # Membuat kerangka kalender tanpa ada hari yang terlewat
-    full_index = pd.MultiIndex.from_product(
-        [date_range, all_products], names=['date', 'product_id']
+    tx = tx[tx["stock_code"].isin(products)]
+    daily = (
+        tx.groupby(["stock_code", "date"])
+        .agg(units_sold=("quantity", "sum"), price=("price", "median"), invoices=("invoice", "nunique"))
+        .reset_index()
     )
-    
-    # Menggabungkan kerangka kalender dengan data penjualan asli
-    metadata = df[['product_id', 'store_id', 'category', 'supplier_id', 'lead_time_days']].drop_duplicates('product_id')
-    df_reindexed = df.set_index(['date', 'product_id']).reindex(full_index, fill_value=0).reset_index()
-    
-    # Membersihkan kolom duplikat dan menandai data yang kosong
-    df_reindexed = df_reindexed.drop(columns=['store_id', 'category', 'supplier_id', 'lead_time_days'], errors='ignore')
-    df_reindexed = pd.merge(df_reindexed, metadata, on='product_id', how='left')
-    df_reindexed['is_imputed'] = df_reindexed['units_sold'] == 0
-    
-    return df_reindexed
+    caps = daily.groupby("stock_code")["units_sold"].quantile(0.99)
+    daily["units_raw"] = daily["units_sold"]
+    daily["units_sold"] = np.minimum(daily["units_sold"], daily["stock_code"].map(caps)).round()
+
+    dates = pd.date_range(tx["date"].min(), tx["date"].max(), freq="D")
+    full = pd.MultiIndex.from_product([products, dates], names=["stock_code", "date"])
+    daily = daily.set_index(["stock_code", "date"]).reindex(full).reset_index()
+    daily[["units_sold", "units_raw", "invoices"]] = daily[["units_sold", "units_raw", "invoices"]].fillna(0)
+    # Carry the last known price forward (then backward for days before the first sale).
+    daily["price"] = daily.groupby("stock_code")["price"].transform(lambda s: s.ffill().bfill())
+
+    meta = (
+        tx.drop_duplicates("stock_code")[["stock_code", "description"]]
+        .assign(category=lambda d: d["description"].map(categorize))
+    )
+    daily = daily.merge(meta, on="stock_code", how="left")
+    return daily.sort_values(["stock_code", "date"]).reset_index(drop=True)

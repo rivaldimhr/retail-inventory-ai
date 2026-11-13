@@ -1,21 +1,22 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
 venv/
 env/
 .env
+.pytest_cache/
 
-# Data & ML Models (Large files / Generated outputs)
-data/*.csv
-data/*.pkl
-data/*.json
+# Node / build
+node_modules/
+dist/
 
-# IDEs
+# Data & models (generated or downloaded)
+data/*
+!data/.gitkeep
+
+# IDEs / OS
 .vscode/
 .idea/
-
-# OS
 Thumbs.db
 Desktop.ini
 .DS_Store

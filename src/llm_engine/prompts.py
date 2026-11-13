@@ -1,66 +1,45 @@
-SYSTEM_PROMPT = """You are a retail analyst focused on business insights and decision-making.
+CHAT_SYSTEM_PROMPT = """You are an inventory analyst assistant for an online retail shop that sells giftware and homeware.
+You receive a snapshot of the shop's inventory: 7-day demand forecasts, current stock, recommended order quantities and risk flags.
 
-Provide concise, actionable answers (2-3 sentences maximum). Prioritize clear recommendations, practical steps, and data-driven reasoning. Avoid long explanations, theory, or unnecessary context. Focus on what actions should be taken and why they matter for retail performance."""
-
-CHAT_SYSTEM_PROMPT = """You are an AI inventory analyst assistant for a retail business. You have access to real-time inventory forecast data.
-
-Your role:
-- Answer questions about inventory, stock levels, demand, and risk flags clearly and concisely
-- Provide actionable recommendations based on the inventory data provided
-- Keep responses brief (2-4 sentences) and practical
-- When referencing data, be specific with numbers
-- If asked something outside inventory/retail scope, politely redirect to inventory topics
-- Respond in the same language as the user (Indonesian or English)"""
+Rules:
+- Answer only from the data provided. If the data does not contain the answer, say so.
+- Be brief (2-5 sentences) and practical: say what to do, for which product, and how many units.
+- Quote specific numbers (units, days of coverage, money in the given currency).
+- Stockout risk means stock plus open orders will not last until the next delivery arrives.
+- Reply in the same language as the user (Indonesian or English).
+- Politely decline questions unrelated to inventory, sales or the shop."""
 
 
-def build_user_prompt(prediction: dict) -> str:
-    d = prediction.get("demand_signal", {})
-    r = prediction.get("risk_flags", {})
-
-    active_flags = [k for k, v in r.items() if v]
-    flags_str = ", ".join(active_flags) if active_flags else "none"
-
-    return f"""Product: {prediction.get("product_id")} | Category: {prediction.get("category")} | Store: {prediction.get("store_id")}
-
-Stock Status:
-- Current stock: {prediction.get("current_stock")} units
-- Stock coverage: {prediction.get("stock_coverage_days")} days
-- Trend: {prediction.get("trend_direction")}
-
-Demand Signal:
-- Forecast (daily): {d.get("avg_daily_demand_forecast")} units
-- Actual avg (30d): {d.get("avg_sales_30d_actual")} units
-- Lost sales (last snapshot): {d.get("lost_sales_last_snapshot")} units
-- Unmet demand: {d.get("unmet_demand_flag")}
-
-Risk Flags: {flags_str}
-
-Based on this data, provide a concise retail recommendation."""
+def _product_line(p: dict, currency: str) -> str:
+    d = p.get("demand_signal", {})
+    flags = [k.replace("_", " ") for k, v in p.get("risk_flags", {}).items() if v] or ["no risk"]
+    return (
+        f"- {p.get('product_name')} [{p.get('product_id')}, {p.get('category')}]: "
+        f"stock {p.get('current_stock')} (+{p.get('on_order', 0)} on order), "
+        f"forecast next 7 days {d.get('forecast_7d')} units, coverage {p.get('stock_coverage_days')} days, "
+        f"lead time {p.get('lead_time_days')} days, recommended order {p.get('recommended_order_qty', 0)} units, "
+        f"revenue at risk {currency} {p.get('revenue_at_risk', 0)}, "
+        f"lost sales last 30 days {d.get('lost_sales_30d', 0)} units, trend {p.get('trend_direction')}, "
+        f"flags: {', '.join(flags)}"
+    )
 
 
-def build_chat_prompt(message: str, inventory_context: dict = None) -> str:
-    if not inventory_context:
-        return message
-
-    ctx = inventory_context
-    context_block = f"""Current Inventory Snapshot:
-- Total products monitored: {ctx.get("total_count", "N/A")}
-- Stockout risk: {ctx.get("stockout_count", 0)} products
-- Overstock risk: {ctx.get("overstock_count", 0)} products
-- Deadstock: {ctx.get("deadstock_count", 0)} products
-- Lost sales alerts: {ctx.get("lost_sales_count", 0)} products
-- Data generated at: {ctx.get("generated_at", "unknown")}
-
-Top risk products:
-"""
-    top_risks = ctx.get("top_risks", [])
-    if top_risks:
-        for p in top_risks[:5]:
-            flags = [k for k, v in p.get("risk_flags", {}).items() if v]
-            flag_str = ", ".join(flags) if flags else "OK"
-            context_block += f"  - {p.get('product_id')} ({p.get('category')}): {flag_str}, stock={p.get('current_stock')}, coverage={p.get('stock_coverage_days')}d\n"
-    else:
-        context_block += "  (no high-risk products)\n"
-
-    return f"""{context_block}
-User question: {message}"""
+def build_chat_prompt(message: str, ctx: dict = None) -> str:
+    if not ctx:
+        return f"(No inventory data is available yet.)\n\nUser question: {message}"
+    cur = ctx.get("currency", "GBP")
+    lines = [
+        f"Inventory snapshot (data as of {ctx.get('data_as_of', 'unknown')}):",
+        f"- Products monitored: {ctx.get('total_count', 'N/A')}",
+        f"- Need reordering now: {ctx.get('reorder_count', 'N/A')}",
+        f"- Stockout risk: {ctx.get('stockout_count', 0)}, overstock: {ctx.get('overstock_count', 0)}, "
+        f"deadstock: {ctx.get('deadstock_count', 0)}, had lost sales (30 days): {ctx.get('lost_sales_count', 0)}",
+        f"- Total revenue at risk before next deliveries: {cur} {ctx.get('revenue_at_risk_total', 'N/A')}",
+        "",
+        "Most urgent products:",
+    ]
+    lines += [_product_line(p, cur) for p in ctx.get("top_risks", [])] or ["- none"]
+    if ctx.get("mentioned_products"):
+        lines += ["", "Products mentioned in the question:"]
+        lines += [_product_line(p, cur) for p in ctx["mentioned_products"]]
+    return "\n".join(lines) + f"\n\nUser question: {message}"

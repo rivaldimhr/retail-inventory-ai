@@ -1,17 +1,12 @@
-import json
-import os
 from src.config.config import config
+from src.repositories.data_repository import _read_json, _write_json
 
 
 class MBARepository:
     @staticmethod
     def save(data: dict):
-        with open(config.MBA_PATH, "w") as f:
-            json.dump(data, f, indent=2)
+        _write_json(config.MBA_PATH, data)
 
     @staticmethod
-    def load() -> dict | None:
-        if not os.path.exists(config.MBA_PATH):
-            return None
-        with open(config.MBA_PATH, "r") as f:
-            return json.load(f)
+    def load():
+        return _read_json(config.MBA_PATH)
