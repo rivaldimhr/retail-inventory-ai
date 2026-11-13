@@ -1,142 +1,246 @@
-# AIforBusiness - Retail Inventory Optimization System
+# Retail Inventory AI
 
-## 🌟 Pendahuluan
-AIforBusiness adalah solusi analitik berbasis AI yang dirancang untuk membantu bisnis ritel mengoptimalkan manajemen inventaris. Sistem ini mengintegrasikan **Machine Learning (XGBoost)** untuk prediksi permintaan, **Market Basket Analysis (MBA)** untuk memahami pola pembelian konsumen, dan **Large Language Model (LLM)** untuk memberikan rekomendasi strategis melalui antarmuka chat.
+Sistem analitik berbasis AI untuk membantu toko ritel mengelola stok. Sistem ini menjawab tiga pertanyaan yang sering dihadapi manajer toko:
 
-Tujuan utama sistem ini adalah menekan biaya operasional dengan meminimalkan *overstock* (stok berlebih) dan mencegah *stockout* (kehabisan stok) menggunakan data historis transaksi.
+| Pertanyaan manajer | Cara sistem menjawab |
+|---|---|
+| Produk mana yang hampir habis atau justru menumpuk? | **Prediksi permintaan (XGBoost)** + label risiko per produk |
+| Produk apa yang sering dibeli bersamaan? | **Market Basket Analysis (Apriori)** |
+| "Saya harus pesan apa hari ini?" | **Chat AI (LLM)** yang membaca kondisi stok terbaru |
 
----
+Tujuannya: mengurangi **stok berlebih (overstock)** yang menahan modal dan mencegah **kehabisan stok (stockout)** yang membuat penjualan hilang.
 
-## 🏗️ Arsitektur Sistem
-Sistem ini menggunakan pola **Service-Layer-Repository (SLR)** untuk memastikan pemisahan tanggung jawab yang jelas dan skalabilitas tinggi.
-
-- **Frontend**: React (TypeScript) + Vite + Recharts.
-- **Backend**: FastAPI (Python) + Uvicorn.
-- **ML Engine**: XGBoost (Time-series forecasting).
-- **MBA Engine**: Apriori & Association Rules (mlxtend).
-- **LLM Engine**: Natural Language Processing untuk ringkasan stok dan rekomendasi (Context-aware).
+> Proyek kelompok mata kuliah AI for Business, Institut Teknologi Bandung (2026).
+> Repositori ini adalah fork dari [bastianns/AIforBusiness](https://github.com/bastianns/AIforBusiness). Lihat bagian [Tim](#-tim).
 
 ---
 
-## 🛠️ Prasyarat Instalasi
+## 🧱 Teknologi
 
-### 1. Backend (Python)
-Pastikan Anda memiliki Python 3.9+.
-```bash
-# Buat virtual environment (opsional tapi disarankan)
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-.\venv\Scripts\activate   # Windows
+| Lapisan | Teknologi |
+|---|---|
+| Frontend | React 18, TypeScript, Vite, Recharts |
+| Backend | FastAPI, Uvicorn |
+| Machine learning | XGBoost (prediksi permintaan) |
+| Market basket | Apriori & association rules (mlxtend) |
+| LLM | Model `nemotron-3-super` lewat Ollama API |
+| Data | pandas, NumPy, holidays |
 
-# Install dependencies
-pip install -r requirements.txt
+Arsitektur backend memakai pola **Service–Layer–Repository**: `controllers` mengatur alur, `services` berisi logika bisnis, dan `repositories` menangani baca/tulis file.
+
+---
+
+## 🔄 Alur Kerja Sistem
+
+Sistem punya dua alur: **pipeline offline**, yang mengolah data dan melatih model, dan **runtime**, yang berjalan saat dashboard dipakai.
+
+### 1. Pipeline offline: dari data mentah ke hasil analisis
+
+```mermaid
+flowchart TD
+    A[("Groceries dataset<br/>CSV transaksi")] --> B["Clean & reindex<br/>penjualan harian per produk"]
+    A --> F["Market basket (Apriori)<br/>keranjang = pelanggan + tanggal"]
+    B --> C["Simulasi stok<br/>reorder point & lead time"]
+    C --> D["Feature engineering<br/>rata-rata, tren, hari libur"]
+    D --> E["XGBoost<br/>prediksi permintaan + risk flags"]
+    E --> G[("forecast_results.json")]
+    F --> H[("mba_results.json")]
 ```
 
-### 2. Frontend (React)
-Pastikan Anda memiliki Node.js 18+.
+| Tahap | Yang dilakukan | Kode |
+|---|---|---|
+| **Clean & reindex** | Mengubah transaksi menjadi jumlah penjualan harian per produk. Hari tanpa penjualan diisi 0, sehingga setiap produk punya kalender harian yang lengkap. | `src/data_pipeline/pipeline.py` |
+| **Simulasi stok** | Dataset tidak punya data stok, jadi stok disimulasikan: mulai dari 100 unit, pesan ulang 80 unit saat stok ≤ 20, barang datang 3 hari kemudian. Permintaan yang tidak terpenuhi dicatat sebagai *lost sales*. | `src/services/feature_service.py` |
+| **Feature engineering** | Rata-rata penjualan 7 & 30 hari, tren 7 hari, *stock coverage* (stok cukup untuk berapa hari), hari dalam seminggu, akhir pekan, hari libur nasional. | `src/services/feature_service.py` |
+| **XGBoost** | Memprediksi permintaan harian, lalu memberi label risiko ke setiap produk (lihat tabel di bawah). | `src/services/ml_service.py` |
+| **Apriori** | Mencari pasangan produk yang sering dibeli bersama, beserta nilai *support*, *confidence*, dan *lift*. | `src/services/mba_service.py` |
+
+Semua tahap dijalankan berurutan oleh `src/controllers/orchestrator.py`.
+
+**Arti label risiko:**
+
+| Label | Kapan muncul | Saran tindakan |
+|---|---|---|
+| `stockout_risk` | Stok hanya cukup untuk waktu lebih pendek dari waktu pengiriman | Segera pesan ulang |
+| `overstock_risk` | Stok cukup untuk lebih dari 30 hari **dan** penjualan sedang turun | Tahan pemesanan |
+| `deadstock_risk` | Stok cukup untuk lebih dari 30 hari **dan** hampir tidak terjual | Diskon atau cuci gudang |
+| `promo_opportunity` | Penjualan turun tapi stok masih di atas 50 unit | Buat promo |
+| `missed_revenue_flag` | Ada permintaan yang tidak terlayani karena stok sempat kosong | Tambah stok pengaman |
+
+### 2. Runtime: saat dashboard dipakai
+
+```mermaid
+flowchart LR
+    U["Manajer toko<br/>(browser)"] --> R["React dashboard<br/>Forecast · MBA · Chat AI"]
+    R --> API["FastAPI backend"]
+    API --> J[("Hasil JSON<br/>cache 1 jam")]
+    API --> L["LLM<br/>(Ollama)"]
+```
+
+| Fitur di dashboard | Endpoint API | Yang terjadi |
+|---|---|---|
+| Tab **Forecast** | `GET /api/v1/forecast` | Menampilkan semua produk beserta prediksi, *coverage*, tren, dan label risiko |
+| Tab **Market Basket** | `GET /api/v1/mba` | Menampilkan aturan "beli A → cenderung beli B" |
+| Tombol **Refresh** di tab MBA | `POST /api/v1/mba/refresh` | Menjalankan ulang Apriori |
+| **Chat AI** (tombol melayang) | `POST /api/v1/chat` | API menambahkan ringkasan stok (jumlah produk berisiko + 5 produk paling kritis) ke pertanyaan, lalu mengirimnya ke LLM |
+| Refresh pipeline penuh | `POST /api/v1/forecast/refresh` | Menjalankan ulang pipeline data dan model XGBoost |
+
+Dokumentasi interaktif semua endpoint tersedia di `http://127.0.0.1:8000/docs` saat backend berjalan.
+
+---
+
+## 🚀 Instalasi
+
+### Prasyarat
+- Python 3.10 atau lebih baru
+- Node.js 18 atau lebih baru
+- API key Ollama, untuk fitur chat AI
+
+### Langkah 1: Clone dan install
+
 ```bash
-# Masuk ke root directory
+git clone https://github.com/rivaldimhr/retail-inventory-ai.git
+cd retail-inventory-ai
+
+# Backend
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# Frontend
 npm install
 ```
 
----
+### Langkah 2: Siapkan dataset
+Dataset tidak disertakan di repositori. Unduh **Groceries Dataset** dari Kaggle (kolom: `Member_number`, `Date`, `itemDescription`), lalu simpan sebagai:
 
-## 🚀 Alur Kerja Sistem (System Flow)
+```
+data/Groceries_dataset.csv
+```
 
-Sistem beroperasi melalui empat fase utama:
+### Langkah 3: Atur API key LLM
+Buat file `.env` di root proyek:
 
-### 1. Data Pipeline (Pre-processing)
-- **Cleaning**: Membersihkan data transaksi mentah (`Groceries_dataset.csv`).
-- **Reindexing**: Mengubah transaksi menjadi deret waktu harian (Daily Time-series).
-- **Stock Simulation**: Mensimulasikan tingkat stok berdasarkan penjualan historis dan parameter reorder point.
-- **Feature Engineering**: Membuat fitur pendukung ML seperti *rolling sales*, tren mingguan, dan fitur kalender (hari libur nasional).
+```env
+OLLAMA_API_KEY=isi_api_key_kamu
+OLLAMA_BASE_URL=https://alamat-server-ollama
+```
 
-### 2. ML Engine (Forecasting)
-- **Training**: Melatih model XGBoost menggunakan data fitur yang telah diproses.
-- **Prediction**: Menghasilkan prediksi permintaan untuk periode mendatang.
-- **Risk Flagging**: Memberikan label otomatis pada produk yang berisiko (Stockout, Overstock, Deadstock).
+Tanpa file ini, dashboard tetap berjalan normal. Hanya fitur chat AI yang tidak bisa menjawab.
 
-### 3. Market Basket Analysis (Insight Penjualan)
-- Menjalankan algoritma Apriori untuk menemukan hubungan antar produk (misal: Pelanggan yang membeli "Milk" cenderung membeli "Bread").
-- Menghasilkan aturan asosiasi (*Support, Confidence, Lift*) untuk strategi *cross-selling*.
+### Langkah 4: Jalankan pipeline pertama kali
 
-### 4. Integration & UI
-- **API Endpoints**: Menyediakan data prediksi dan MBA ke Dashboard.
-- **LLM Chat**: Mengambil konteks inventaris (produk berisiko tinggi) untuk menjawab pertanyaan pengguna secara natural.
-
----
-
-## 💡 Use Cases (Kasus Penggunaan)
-
-### Case 1: Pencegahan Stockout (Kehabisan Stok)
-**Masalah**: Toko sering kehilangan potensi penjualan karena produk populer habis sebelum jadwal pengiriman berikutnya.
-**Solusi**: Sistem mendeteksi `stockout_risk` jika `coverage_days < lead_time`. Dashboard memberikan peringatan merah agar manajer segera melakukan *Restock*.
-
-### Case 2: Reduksi Overstock & Deadstock
-**Masalah**: Modal tertahan di gudang karena stok produk yang tidak laku menumpuk.
-**Solusi**: Sistem memberikan flag `overstock_risk` (stok > 30 hari) atau `deadstock_risk` (tidak ada penjualan signifikan). Manajer dapat merencanakan promo atau diskon untuk produk tersebut.
-
-### Case 3: Optimasi Bundle Produk (Cross-Selling)
-**Masalah**: Kurangnya strategi promosi yang berbasis data.
-**Solusi**: Menggunakan output **MBA** untuk membuat paket *bundling*. Jika data menunjukkan korelasi kuat antara "Sosis" dan "Saus", toko bisa meletakkan keduanya berdekatan atau membuat harga paket hemat.
-
-### Case 4: Konsultasi Strategis via AI Chat
-**Masalah**: Manajer toko kesulitan membaca tabel data yang kompleks.
-**Solusi**: Manajer bertanya ke AI: *"Produk apa yang harus saya pesan hari ini?"*. AI akan menganalisis `inventory_context` dan menjawab: *"Anda harus memesan Produk A karena stok hanya cukup untuk 2 hari ke depan."*
-
----
-
-## 🖥️ Cara Menjalankan Sistem
-
-### Langkah 1: Siapkan Data
-Letakkan file `Groceries_dataset.csv` di dalam folder `data/`.
-
-### Langkah 2: Jalankan Pipeline Awal
-Gunakan Orchestrator untuk memproses data dan melatih model pertama kali.
 ```bash
+# Linux / macOS
+PYTHONPATH=. python src/controllers/orchestrator.py
+
+# Windows PowerShell
 $env:PYTHONPATH = "."; python src/controllers/orchestrator.py
 ```
 
-### Langkah 3: Jalankan Backend API
-```bash
-$env:PYTHONPATH = "."; uvicorn src.api.main:app --reload
-```
-API akan tersedia di `http://127.0.0.1:8000`. Dokumentasi Swagger di `/docs`.
+Perintah ini membuat `processed_features.csv`, `demand_model.pkl`, `forecast_results.json`, dan `mba_results.json` di folder `data/`.
 
-### Langkah 4: Jalankan Frontend Dashboard
+### Langkah 5: Jalankan backend dan frontend
+Buka dua terminal:
+
 ```bash
+# Terminal 1: backend (http://127.0.0.1:8000)
+PYTHONPATH=. uvicorn src.api.main:app --reload
+
+# Terminal 2: frontend (http://localhost:5173)
 npm run dev
 ```
-Buka `http://localhost:5173` di browser Anda.
+
+Buka **http://localhost:5173** di browser.
 
 ---
 
-## 📡 Dokumentasi API Utama
+## 🧑‍💼 Panduan Pengguna
 
-- `GET /api/v1/forecast`: Mengambil semua hasil prediksi dan risk flags.
-- `GET /api/v1/mba`: Mengambil hasil analisis asosiasi produk.
-- `POST /api/v1/chat`: Mengirim pesan ke AI dengan konteks stok terbaru.
-- `POST /api/v1/forecast/refresh`: Menjalankan ulang seluruh pipeline (Data -> ML).
+Panduan ini untuk manajer toko atau staf gudang yang memakai dashboard.
+
+### 1. Cek kondisi stok hari ini (tab Forecast)
+1. Buka dashboard. Tab **Forecast** terbuka otomatis.
+2. Lihat **kartu ringkasan** di bagian atas: jumlah produk yang dipantau, serta berapa yang berisiko stockout, overstock, dan deadstock.
+3. Gulir ke **tabel produk**. Setiap baris menampilkan:
+   - **Stok saat ini** dan **coverage**, yaitu stok cukup untuk berapa hari. Bar merah berarti hampir habis.
+   - **Tren penjualan**: naik, stabil, atau turun.
+   - **Label risiko** produk itu.
+4. Pakai **kolom pencarian** untuk mencari produk tertentu, misalnya `whole milk`.
+5. Klik **Refresh** untuk memuat data terbaru dari server.
+
+### 2. Tentukan tindakan
+| Kalau kamu melihat… | Lakukan |
+|---|---|
+| Label merah **Stockout** | Pesan ulang produk itu hari ini |
+| Label **Overstock** | Tunda pemesanan berikutnya |
+| Label **Deadstock** | Rencanakan diskon atau bundling |
+| Label **Promo** | Pertimbangkan promosi untuk mendorong penjualan |
+
+### 3. Cari ide bundling dan penataan rak (tab Market Basket)
+1. Klik tab **Market Basket**.
+2. Setiap baris berbunyi **"Jika membeli A → cenderung membeli B"**.
+3. Baca tiga angkanya:
+   - **Support**: seberapa sering kombinasi ini muncul dari seluruh transaksi.
+   - **Confidence**: dari pembeli A, berapa persen yang juga membeli B.
+   - **Lift**: di atas 1 berarti A dan B benar-benar saling terkait, bukan kebetulan. Makin tinggi makin kuat.
+4. Pakai aturan dengan **lift tertinggi** untuk paket bundling, rak yang berdekatan, atau rekomendasi "sering dibeli bersama".
+5. Klik **Refresh** di tab ini untuk menghitung ulang aturan dari data transaksi terbaru.
+
+### 4. Tanya langsung ke Chat AI
+1. Klik **tombol chat** di pojok kanan bawah.
+2. Ketik pertanyaan dalam bahasa Indonesia atau Inggris. Contoh:
+   - *"Produk apa yang harus saya pesan hari ini?"*
+   - *"Kenapa stok whole milk berisiko?"*
+   - *"Produk mana yang sebaiknya didiskon minggu ini?"*
+3. AI menjawab dalam 2–4 kalimat berdasarkan data stok terbaru.
+
+> AI hanya membaca ringkasan data dari sistem. Tetap cek ulang angkanya di tabel sebelum mengambil keputusan besar.
+
+### 5. Perbarui data
+Kalau ada data transaksi baru, ganti `data/Groceries_dataset.csv`, lalu jalankan ulang Langkah 4 di bagian Instalasi. Atau panggil `POST /api/v1/forecast/refresh` dan `POST /api/v1/mba/refresh` lewat halaman `/docs`.
+
+Hasil forecast dianggap **usang setelah 24 jam**. Setelah itu API meminta pipeline dijalankan ulang.
+
+---
+
+## ⚠️ Keterbatasan
+
+- **Stok masih simulasi.** Dataset hanya berisi transaksi, jadi stok, waktu pengiriman (3 hari), dan kategori ("General") memakai nilai yang sama untuk semua produk. Untuk dipakai di toko sungguhan, ganti dengan data stok asli.
+- **Model belum dievaluasi** dengan pembagian data latih dan uji. Nilai `confidence_score` (0.85) masih placeholder.
+- **Satu toko.** Semua data dianggap berasal dari toko `STR-001`.
 
 ---
 
 ## 📁 Struktur Proyek
+
 ```text
-D:\AIforBusiness\
-├── data/               # Penyimpanan dataset mentah, model, dan hasil JSON
-├── notebooks/          # Eksperimen EDA dan evaluasi model (Jupyter)
+retail-inventory-ai/
+├── data/               # Dataset mentah, model, dan hasil JSON (tidak di-commit)
+├── notebooks/          # Validasi pipeline dan EDA
 ├── src/
-│   ├── api/            # Server FastAPI dan definisi routes
-│   ├── config/         # Konfigurasi path dan variabel sistem
-│   ├── controllers/    # Orchestrator alur kerja utama
-│   ├── data_pipeline/  # Logika pembersihan dan feature engineering
-│   ├── dashboard/      # Frontend React & Visualisasi
-│   ├── llm_engine/     # Integrasi LLM dan Prompt Engineering
-│   ├── repositories/   # Abstraksi akses file/database
-│   └── services/       # Logika bisnis (ML, MBA, Simulation)
-└── requirements.txt    # Daftar library Python
+│   ├── api/            # Server FastAPI
+│   ├── config/         # Lokasi file data dan model
+│   ├── controllers/    # Orchestrator alur kerja
+│   ├── data_pipeline/  # Pembersihan dan reindex data
+│   ├── dashboard/      # Frontend React (App.tsx, FloatingAIChat.tsx)
+│   ├── llm_engine/     # Integrasi LLM dan prompt
+│   ├── repositories/   # Baca/tulis file data, model, hasil
+│   └── services/       # Logika bisnis: fitur, ML, market basket
+├── index.html, package.json, vite.config.ts   # Konfigurasi frontend
+└── requirements.txt    # Library Python
 ```
 
 ---
-**Pengembang**: Bastian Natanael Sibarani
-**Status Proyek**: Aktif (Workload A-D Selesai, Workload E dalam pengembangan)
+
+## 👥 Tim
+
+Proyek kelompok lima orang:
+
+- Bastian Natanael Sibarani
+- Gabriel Marcellino
+- Faishal
+- Gymnastiar Anwar
+- M. Rivaldi Mahari
+
+Riwayat commit lengkap setiap anggota tersimpan di repositori ini.
