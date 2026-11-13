@@ -32,6 +32,8 @@ jobs:
     # Static demo (no backend) built from the exported real-data results in public/demo.
     needs: frontend
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -46,3 +48,12 @@ jobs:
         with:
           name: demo-site
           path: dist-demo
+      - name: Publish demo to the gh-pages branch
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cd dist-demo
+          touch .nojekyll
+          git init -q -b gh-pages
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -q -m "Demo build ${GITHUB_SHA}"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
