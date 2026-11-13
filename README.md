@@ -10,8 +10,7 @@ Sistem analitik berbasis AI untuk membantu toko ritel mengelola stok. Sistem ini
 
 Tujuannya: mengurangi **stok berlebih (overstock)** yang menahan modal dan mencegah **kehabisan stok (stockout)** yang membuat penjualan hilang.
 
-> Proyek kelompok mata kuliah AI for Business, Institut Teknologi Bandung (2026).
-> Repositori ini adalah fork dari [bastianns/AIforBusiness](https://github.com/bastianns/AIforBusiness). Lihat bagian [Tim](#-tim).
+> Dikembangkan ulang dari proyek kelompok mata kuliah AI for Business, Institut Teknologi Bandung (2026). Lihat [Asal Proyek](#-asal-proyek).
 
 ---
 
@@ -155,6 +154,68 @@ Buka **http://localhost:5173** di browser.
 
 ---
 
+## 🗺️ Diagram Aktivitas Pengguna
+
+Diagram ini menunjukkan langkah yang dilakukan pengguna (manajer toko atau staf gudang) setiap kali memakai sistem. Penjelasan detail setiap langkah ada di [Panduan Pengguna](#-panduan-pengguna).
+
+### A. Rutinitas harian: cek stok sampai ambil keputusan
+
+```mermaid
+flowchart TD
+    S(("Mulai")) --> A["Buka dashboard"]
+    A --> B["Lihat kartu ringkasan stok"]
+    B --> C{"Ada produk berisiko<br/>kehabisan stok?"}
+    C -- Ya --> D["Cari produk berlabel Stockout<br/>di tabel Forecast"]
+    D --> E["Pesan ulang produk tersebut"]
+    E --> F
+    C -- Tidak --> F{"Ada produk<br/>overstock atau deadstock?"}
+    F -- Ya --> G["Tunda pemesanan<br/>atau rencanakan diskon"]
+    G --> H
+    F -- Tidak --> H["Buka tab Market Basket"]
+    H --> I["Pilih pasangan produk<br/>dengan lift tertinggi"]
+    I --> J["Buat paket bundling<br/>atau dekatkan posisi rak"]
+    J --> K{"Masih ada yang<br/>ingin ditanyakan?"}
+    K -- Ya --> L["Tanya Chat AI"]
+    L --> M["Baca saran AI, lalu<br/>cocokkan dengan tabel"]
+    M --> K
+    K -- Tidak --> Z(("Selesai"))
+```
+
+### B. Apa yang terjadi saat pengguna bertanya ke Chat AI
+
+```mermaid
+sequenceDiagram
+    actor U as Pengguna
+    participant D as Dashboard
+    participant S as Server
+    participant AI as Model AI
+    U->>D: Ketik pertanyaan, misalnya "Produk apa yang harus dipesan?"
+    D->>S: Kirim pertanyaan
+    S->>S: Tambahkan ringkasan stok terbaru<br/>(jumlah produk berisiko + 5 paling kritis)
+    S->>AI: Pertanyaan + ringkasan stok
+    AI-->>S: Saran singkat (2–4 kalimat)
+    S-->>D: Teruskan jawaban
+    D-->>U: Tampilkan jawaban di jendela chat
+```
+
+### C. Memperbarui data dengan transaksi baru
+
+```mermaid
+flowchart TD
+    S(("Mulai")) --> A["Siapkan file transaksi terbaru<br/>(CSV)"]
+    A --> B["Simpan sebagai<br/>data/Groceries_dataset.csv"]
+    B --> C["Jalankan pipeline<br/>(orchestrator.py atau tombol refresh)"]
+    C --> D["Sistem menghitung ulang<br/>prediksi, label risiko, dan market basket"]
+    D --> E["Buka dashboard,<br/>klik Refresh"]
+    E --> F{"Data sudah<br/>terbaru?"}
+    F -- Ya --> Z(("Selesai"))
+    F -- Tidak --> C
+```
+
+> Hasil prediksi dianggap usang setelah 24 jam. Jalankan alur C minimal sekali sehari agar dashboard selalu memakai data terbaru.
+
+---
+
 ## 🧑‍💼 Panduan Pengguna
 
 Panduan ini untuk manajer toko atau staf gudang yang memakai dashboard.
@@ -233,14 +294,6 @@ retail-inventory-ai/
 
 ---
 
-## 👥 Tim
+## 🙏 Asal Proyek
 
-Proyek kelompok lima orang:
-
-- Bastian Natanael Sibarani
-- Gabriel Marcellino
-- Faishal
-- Gymnastiar Anwar
-- M. Rivaldi Mahari
-
-Riwayat commit lengkap setiap anggota tersimpan di repositori ini.
+Proyek ini dikembangkan ulang dari tugas kelompok mata kuliah AI for Business ITB oleh Bastian Natanael Sibarani, Gabriel Marcellino, Faishal, Gymnastiar Anwar, dan M. Rivaldi Mahari ([repositori asli](https://github.com/bastianns/AIforBusiness)). Riwayat commit versi awal tetap tersimpan di repositori ini.
