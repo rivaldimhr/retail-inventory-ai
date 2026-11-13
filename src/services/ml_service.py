@@ -9,32 +9,35 @@ from src.services.feature_service import FEATURES, TARGET
 
 
 def make_model():
-    """XGBoost when installed; otherwise scikit-learn's gradient boosting (same idea, no extra dependency)."""
-    try:
+    """Gradient boosting with a Poisson loss: demand is a count, and Poisson keeps the forecast
+    unbiased on average (important for stock decisions; a log-target model under-forecasts).
+    Set MODEL=xgboost in .env to use XGBoost with the same objective."""
+    if config.MODEL == "xgboost":
         from xgboost import XGBRegressor
         return XGBRegressor(
-            n_estimators=400, learning_rate=0.05, max_depth=6,
-            subsample=0.8, colsample_bytree=0.8, min_child_weight=5,
-            objective="reg:squarederror", n_jobs=-1, random_state=42,
+            objective="count:poisson", n_estimators=600, learning_rate=0.03, max_depth=4,
+            min_child_weight=50, subsample=0.8, colsample_bytree=0.8, reg_lambda=1.0,
+            n_jobs=-1, random_state=42,
         )
-    except ImportError:
-        from sklearn.ensemble import HistGradientBoostingRegressor
-        return HistGradientBoostingRegressor(max_iter=400, learning_rate=0.05, random_state=42)
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    return HistGradientBoostingRegressor(
+        loss="poisson", max_iter=600, learning_rate=0.03, max_leaf_nodes=15,
+        min_samples_leaf=200, l2_regularization=1.0, random_state=42,
+    )
 
 
 def model_name(model) -> str:
-    return type(model).__name__
+    return f"{type(model).__name__} (Poisson)"
 
 
 def fit(df: pd.DataFrame):
-    """Train on log1p(target) so a few very large wholesale weeks do not dominate the loss."""
     model = make_model()
-    model.fit(df[FEATURES], np.log1p(df[TARGET]))
+    model.fit(df[FEATURES], df[TARGET])
     return model
 
 
 def predict(model, df: pd.DataFrame) -> np.ndarray:
-    return np.clip(np.expm1(model.predict(df[FEATURES])), 0, None)
+    return np.clip(model.predict(df[FEATURES]), 0, None)
 
 
 def _scores(y: np.ndarray, pred: np.ndarray) -> dict:

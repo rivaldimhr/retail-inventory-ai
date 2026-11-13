@@ -38,11 +38,31 @@ Sitasi: Chen, D. (2012). *Online Retail II* [Dataset]. UCI Machine Learning Repo
 |---|---|
 | Frontend | React 18, TypeScript, Vite, Recharts |
 | Backend | FastAPI, Uvicorn |
-| Prediksi permintaan | XGBoost (otomatis memakai gradient boosting scikit-learn jika XGBoost tidak terpasang) |
+| Prediksi permintaan | Gradient boosting (scikit-learn HistGradientBoosting, loss Poisson); XGBoost opsional lewat `MODEL=xgboost` |
 | Market basket | Aturan asosiasi dua produk (support, confidence, lift) dengan matriks sparse SciPy |
 | Chat AI | API apa pun yang kompatibel dengan OpenAI (Groq, Gemini, OpenAI) atau Ollama |
 | Data | pandas, NumPy, holidays |
 | Kualitas | pytest, GitHub Actions |
+
+---
+
+## 📈 Hasil pada Data Asli
+
+Dijalankan pada Online Retail II lengkap: **1.003.214 baris transaksi bersih, 39.516 invoice, 4.707 produk**. Prediksi dibuat untuk 300 produk terlaris.
+
+**Akurasi prediksi 7 hari** (data uji 2011-10-08 s.d. 2011-12-02, yaitu musim puncak menjelang Natal):
+
+| Metode | MAE (unit/produk/minggu) | WAPE | Bias |
+|---|---|---|---|
+| **Model (gradient boosting, Poisson)** | **90.4** | **45.9%** | **-3.5%** |
+| Rata-rata 28 hari × 7 | 93.0 | 47.2% | -6.4% |
+| Sama dengan 7 hari terakhir | 107.3 | 54.4% | -2.2% |
+
+- Model **2.8% lebih akurat (MAE)** dari metode pembanding terbaik (rata-rata 28 hari), dan biasnya juga lebih kecil, artinya prediksinya tidak cenderung terlalu rendah. Ini penting untuk stok: prediksi yang terlalu rendah membuat barang cepat habis. Metode "sama dengan 7 hari terakhir" memang biasnya paling kecil, tetapi meleset jauh lebih besar (MAE 107).
+- Selisihnya kecil karena permintaan toko ini sangat tidak teratur: banyak pembeli grosir yang sesekali memesan dalam jumlah besar. WAPE sekitar 46% menunjukkan bahwa permintaan mingguan per produk memang sulit ditebak, sehingga stok pengaman tetap diperlukan.
+- Model dengan target log sempat diuji dan MAE-nya sedikit lebih kecil, tetapi biasnya sekitar −20%. Model itu tidak dipakai karena akan membuat toko kekurangan stok.
+
+**Contoh pasangan produk dari market basket:** pembeli *Coffee Mug Dog + Ball Design* 75% juga membeli *Coffee Mug Cat + Bird Design* (lift 46). Produk seri *Poppy's Playhouse* (bedroom, living room, kitchen) juga hampir selalu dibeli bersamaan.
 
 ---
 

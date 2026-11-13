@@ -36,6 +36,7 @@ class Config:
     MBA_TOP_N_PRODUCTS = _env("MBA_TOP_N_PRODUCTS", 500)
 
     # ---- Forecast -----------------------------------------------------------
+    MODEL = _env("MODEL", "sklearn")   # "sklearn" (default, HistGradientBoosting) or "xgboost"
     HORIZON_DAYS = 7          # forecast covers the next 7 days
     TEST_DAYS = 56            # last 8 weeks held out for evaluation
 

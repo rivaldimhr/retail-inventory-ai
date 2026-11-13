@@ -13,6 +13,8 @@ FEATURES = [
     "nonzero_days_28", "days_since_last_sale", "trend_ratio",
     "price", "price_ratio_28", "product_mean_to_date",
     "month_next", "days_to_christmas", "holidays_next_7", "category_code",
+    "orders_mean_7", "orders_mean_28", "median_28", "day_of_week",
+    "last_year_next_7", "last_year_last_7", "last_year_growth",
 ]
 TARGET = "target_next_7"
 
@@ -63,10 +65,24 @@ def add_features(daily: pd.DataFrame) -> pd.DataFrame:
         df["holidays_next_7"] = 0.0
 
     df["category_code"] = df["category"].astype("category").cat.codes
+    df["day_of_week"] = df["date"].dt.dayofweek
+
+    # Number of orders (invoices) is steadier than units, because one wholesale order can be huge.
+    orders = df.groupby("stock_code", sort=False)["invoices"]
+    df["orders_mean_7"] = orders.transform(lambda s: s.rolling(7, min_periods=1).mean())
+    df["orders_mean_28"] = orders.transform(lambda s: s.rolling(28, min_periods=1).mean())
+    df["median_28"] = g.transform(lambda s: s.rolling(28, min_periods=1).median())
 
     # Target: total demand over the next 7 days (NaN where the future is not observed).
     rev = df.groupby("stock_code", sort=False)["units_sold"].transform(
         lambda s: s[::-1].rolling(config.HORIZON_DAYS, min_periods=config.HORIZON_DAYS).sum()[::-1].shift(-1)
     )
     df[TARGET] = rev
+
+    # Same week one year earlier (364 days = 52 weeks, so weekdays line up). Entirely in the past.
+    by_code = df.groupby("stock_code", sort=False)
+    last_7 = g.transform(lambda s: s.rolling(7, min_periods=1).sum())
+    df["last_year_next_7"] = by_code[TARGET].shift(364)
+    df["last_year_last_7"] = last_7.groupby(df["stock_code"]).shift(364)
+    df["last_year_growth"] = (df["last_year_next_7"] + 1) / (df["last_year_last_7"] + 1)
     return df

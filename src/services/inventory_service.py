@@ -32,7 +32,9 @@ def build_snapshot(simulated: pd.DataFrame, latest: pd.DataFrame) -> dict:
         price = float(row["price"]) if pd.notna(row["price"]) else 0.0
         lt = int(row["lead_time_days"])
         stock = float(row["stock_qty"])
-        on_order = float(row["on_order"])
+        # The simulated policy may already have placed an order today. Leave today's decision
+        # to the manager: the recommendation below replaces that automatic order.
+        on_order = float(row["on_order"]) - float(row.get("ordered", 0) or 0)
         position = stock + on_order
 
         forecast_7d = float(row["forecast_7d"])
