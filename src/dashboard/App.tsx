@@ -5,7 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, ComposedChart, Line,
 } from "recharts";
-import { API_BASE } from "./api";
+import { api, DEMO } from "./api";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -86,15 +86,6 @@ const COVERAGE_MAX = 60;
 const money = (v: number, cur = "GBP") =>
   new Intl.NumberFormat("en-GB", { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(v);
 
-async function getJson(url: string, init?: RequestInit) {
-  const res = await fetch(url, init);
-  if (!res.ok) {
-    const d = await res.json().catch(() => ({}));
-    throw new Error((d as { detail?: string }).detail ?? `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
 const icons = {
   box:     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
   alert:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
@@ -168,7 +159,7 @@ function ProductDetail({ p, currency, onClose }: { p: Prediction; currency: stri
   useEffect(() => {
     setHistory(null);
     setErr(null);
-    getJson(`${API_BASE}/api/v1/products/${encodeURIComponent(p.product_id)}/history?days=90`)
+    api(`/api/v1/products/${encodeURIComponent(p.product_id)}/history?days=90`)
       .then((j) => setHistory(j.data))
       .catch((e) => setErr(e instanceof Error ? e.message : "Gagal memuat riwayat."));
   }, [p.product_id]);
@@ -250,7 +241,7 @@ export default function App() {
     setMbaLoading(true);
     setMbaError(null);
     try {
-      setMbaData((await getJson(`${API_BASE}/api/v1/mba`)).data);
+      setMbaData((await api("/api/v1/mba")).data);
     } catch (err) {
       setMbaError(err instanceof Error ? err.message : "Gagal mengambil data market basket.");
     } finally {
@@ -262,7 +253,7 @@ export default function App() {
     setMbaRefreshing(true);
     setMbaError(null);
     try {
-      await getJson(`${API_BASE}/api/v1/mba/refresh`, { method: "POST" });
+      await api("/api/v1/mba/refresh", { method: "POST" });
       await fetchMba();
     } catch (err) {
       setMbaError(err instanceof Error ? err.message : "Gagal menjalankan analisis.");
@@ -277,7 +268,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const json = await getJson(`${API_BASE}/api/v1/forecast`);
+      const json = await api("/api/v1/forecast");
       setPredictions(json.data);
       setMetadata(json.metadata);
     } catch (err) {
@@ -364,7 +355,7 @@ export default function App() {
               <span>{metadata.total_count} produk</span>
             </div>
           )}
-          {metadata && (
+          {metadata && !DEMO && (
             <div className={`health-chip ${metadata.stale ? "stale" : "live"}`} title={metadata.stale ? "Forecast lebih dari 24 jam. Jalankan ulang pipeline." : "Forecast terbaru"}>
               <span className="health-dot" />
               {metadata.stale ? "Perlu diperbarui" : "Terbaru"}
@@ -376,6 +367,14 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {DEMO && (
+        <div className="demo-banner">
+          Mode demo: data asli Online Retail II (UCI) sampai {metadata?.data_as_of ?? "…"}, tanpa server.
+          Stok adalah hasil simulasi, dan Chat AI menjawab otomatis dari data.{" "}
+          <a href="https://github.com/rivaldimhr/retail-inventory-ai" target="_blank" rel="noreferrer">Lihat kode di GitHub</a>
+        </div>
+      )}
 
       <nav className="tab-nav">
         <button className={`tab-btn ${activeTab === "forecast" ? "tab-active" : ""}`} onClick={() => setActiveTab("forecast")}>
@@ -406,7 +405,7 @@ export default function App() {
                     <span className="search-icon">{icons.search}</span>
                     <input className="search-input" type="text" placeholder="Cari produk..." value={mbaSearch} onChange={(e) => setMbaSearch(e.target.value)} />
                   </div>
-                  <button className="btn-refresh" onClick={runMbaRefresh} disabled={mbaRefreshing}>
+                  <button className="btn-refresh" onClick={runMbaRefresh} disabled={mbaRefreshing || DEMO}>
                     <span className="btn-icon">{icons.refresh}</span>
                     {mbaRefreshing ? "Memproses..." : "Hitung ulang"}
                   </button>

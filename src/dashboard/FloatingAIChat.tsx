@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import "./FloatingAIChat.css";
-import { API_BASE } from "./api";
+import { api, demoChat, DEMO } from "./api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -150,25 +150,17 @@ export default function FloatingAIChat({ inventoryContext }: FloatingAIChatProps
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/v1/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: trimmed,
-          inventory_context: inventoryContext ?? null,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { detail?: string }).detail ?? `HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
+      const reply = DEMO
+        ? await demoChat(trimmed)
+        : (await api<{ response: string }>("/api/v1/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: trimmed, inventory_context: inventoryContext ?? null }),
+          })).response;
       const aiMsg: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: data.response,
+        content: reply,
         ts: Date.now(),
       };
       setMessages((prev) => [...prev, aiMsg]);

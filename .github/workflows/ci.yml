@@ -27,3 +27,22 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+
+  demo:
+    # Static demo (no backend) built from the exported real-data results in public/demo.
+    needs: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -- --outDir dist-demo
+        env:
+          VITE_DEMO: "true"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: demo-site
+          path: dist-demo
