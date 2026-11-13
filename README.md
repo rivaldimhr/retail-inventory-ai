@@ -74,6 +74,38 @@ Dijalankan pada Online Retail II lengkap: **1.003.214 baris transaksi bersih, 39
 - Model dengan target log sempat diuji dan MAE-nya sedikit lebih kecil, tetapi biasnya sekitar −20%. Model itu tidak dipakai karena akan membuat toko kekurangan stok.
 - Hari terakhir dataset (9 Desember 2011) hanya berisi transaksi setengah hari, jadi otomatis diabaikan. Data dianggap berakhir pada 8 Desember 2011.
 
+**Akurasi dalam persen** (akurasi = 100% − WAPE, yaitu total selisih prediksi dibagi total penjualan sebenarnya):
+
+| Metode | Akurasi | Rata-rata meleset per produk/minggu |
+|---|---|---|
+| **Model (gradient boosting)** | **53.6%** | **91.0 unit** |
+| Rata-rata 28 hari | 52.6% | 93.0 unit |
+| Sama dengan 7 hari terakhir | 45.1% | 107.7 unit |
+
+<details>
+<summary>Akurasi per kategori</summary>
+
+| Kategori | Akurasi |
+|---|---|
+| Christmas & seasonal | 69.9% |
+| Garden | 68.5% |
+| Accessories & warmers | 58.9% |
+| Bags & storage | 57.2% |
+| Stationery & gift wrap | 53.0% |
+| Kitchen & dining | 52.3% |
+| Other | 47.6% |
+| Baking & party | 47.5% |
+| Home decor | 46.8% |
+| Candles & lighting | 46.2% |
+| Toys & games | 44.4% |
+
+</details>
+
+**Cara membaca angka ini:**
+- **Per produk per minggu**, prediksi rata-rata meleset sekitar 46%. Ini wajar untuk toko dengan banyak pembeli grosir: satu pesanan besar bisa melipatgandakan penjualan satu produk dalam seminggu, dan itu tidak bisa ditebak dari data masa lalu.
+- **Untuk total semua produk**, prediksi hanya meleset 2.3% (bias -2.3%). Gambaran besarnya hampir tepat; yang sulit ditebak adalah naik-turun per produk.
+- Karena itu sistem tetap memakai **stok pengaman** untuk menutup ketidakpastian per produk.
+
 **Contoh pasangan produk dari market basket** (setiap pasangan ditampilkan sekali, ke arah yang paling kuat): pembeli *Coffee Mug Dog + Ball Design* 75% juga membeli *Coffee Mug Cat + Bird Design* (lift 46). Produk seri *Poppy's Playhouse* (bedroom, living room, kitchen) juga hampir selalu dibeli bersamaan.
 
 ---
