@@ -31,7 +31,7 @@ const FLAG_LABEL: Record<string, string> = {
   deadstock_risk: "deadstock", promo_opportunity: "peluang promo", missed_revenue_flag: "sempat kehilangan penjualan",
 };
 const TREND: Record<string, string> = { INCREASING: "naik", DECREASING: "turun", STABLE: "stabil" };
-const STOP = new Set(["of", "the", "and", "set", "pack", "design", "small", "large", "mini", "jumbo", "red", "white", "pink", "blue",
+const STOP = new Set(["of", "the", "and", "set", "pack", "design", "red", "white", "pink", "blue",
   "green", "black", "cream", "assorted", "colour", "colours", "retrospot", "vintage", "yang", "dan", "apa", "ini", "itu", "untuk"]);
 
 const short = (p: DemoProduct) =>
