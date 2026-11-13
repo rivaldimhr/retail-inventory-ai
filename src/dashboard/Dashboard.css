@@ -673,3 +673,27 @@ body {
 .btn-ghost:hover { background: #f1f5f9; }
 .demo-banner { background: #fef3c7; color: #78350f; border-bottom: 1px solid #fde68a; font-size: 13px; padding: 8px 24px; text-align: center; }
 .demo-banner a { color: #92400e; font-weight: 700; }
+
+/* ── Small screens ───────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .navbar { padding: 0 14px; height: 56px; }
+  .brand-sub, .meta-pill, .health-chip { display: none; }
+  .brand-name { font-size: 15px; white-space: nowrap; }
+  .brand-logo { width: 32px; height: 32px; font-size: 12px; }
+  .btn-refresh { padding: 7px 12px; font-size: 13px; }
+  .demo-banner { padding: 8px 14px; font-size: 12px; text-align: left; }
+  .tab-nav { padding: 0 8px; }
+  .main { padding: 16px 12px; }
+  .cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .sc { padding: 12px; gap: 10px; flex-direction: column; align-items: flex-start; }
+  .sc-icon { width: 30px; height: 30px; }
+  .sc-value { font-size: 22px; }
+  .sc-sub { display: none; }
+  .model-strip { font-size: 12px; align-items: flex-start; }
+  .charts-grid { grid-template-columns: 1fr; }
+  .table-header { flex-direction: column; align-items: stretch; gap: 10px; }
+  .table-controls { flex-wrap: wrap; }
+  .search-wrap, .search-input { width: 100%; }
+  .detail-panel { padding: 14px; }
+  .detail-stats { grid-template-columns: repeat(2, 1fr); }
+}

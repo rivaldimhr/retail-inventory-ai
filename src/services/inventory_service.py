@@ -55,6 +55,8 @@ def build_snapshot(simulated: pd.DataFrame, latest: pd.DataFrame) -> dict:
 
         deadstock = days_since >= config.DEADSTOCK_NO_SALE_DAYS and stock > 0
         flags = {
+            # Nothing on the shelf right now (even if a delivery is on its way): sales are being lost today.
+            "out_of_stock": bool(stock <= 0 and daily_fc > 0),
             "stockout_risk": bool(daily_fc > 0 and position < daily_fc * lt),
             "overstock_risk": bool(not deadstock and coverage > config.OVERSTOCK_DAYS and stock > 0),
             "deadstock_risk": bool(deadstock),
@@ -89,7 +91,8 @@ def build_snapshot(simulated: pd.DataFrame, latest: pd.DataFrame) -> dict:
             "risk_flags": flags,
         })
 
-    predictions.sort(key=lambda p: (not p["risk_flags"]["stockout_risk"], -p["revenue_at_risk"], -p["demand_signal"]["forecast_7d"]))
+    predictions.sort(key=lambda p: (not p["risk_flags"]["stockout_risk"], not p["risk_flags"]["out_of_stock"],
+                                    -p["revenue_at_risk"], -p["demand_signal"]["forecast_7d"]))
     return {
         "generated_at": datetime.now().isoformat(),
         "data_as_of": str(as_of.date()),

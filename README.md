@@ -1,5 +1,16 @@
 # Retail Inventory AI
 
+[![CI](https://github.com/rivaldimhr/retail-inventory-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/rivaldimhr/retail-inventory-ai/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB)
+![React](https://img.shields.io/badge/React-18-61DAFB)
+![Data](https://img.shields.io/badge/data-Online%20Retail%20II%20(UCI)-4f46e5)
+
+**🔗 Demo online: https://rivaldimhr.github.io/retail-inventory-ai/** (tanpa install, data asli)
+
+![Dashboard Retail Inventory AI](docs/screenshot-dashboard.png)
+
+> **Status Chat AI:** di demo online, Chat AI **belum berjalan dengan model AI**. Saat ini chat hanya berjalan dalam **mode demo** (menjawab otomatis dari data), karena API key LLM perlu disiapkan terlebih dahulu. Semua kode dan konfigurasi untuk mengaktifkannya sudah tersedia. Lihat [Mengaktifkan Chat AI](#-mengaktifkan-chat-ai).
+
 Sistem analitik berbasis AI untuk membantu toko ritel mengelola stok. Sistem ini menjawab empat pertanyaan yang sering dihadapi manajer toko:
 
 | Pertanyaan manajer | Cara sistem menjawab |
@@ -40,7 +51,7 @@ Sitasi: Chen, D. (2012). *Online Retail II* [Dataset]. UCI Machine Learning Repo
 | Backend | FastAPI, Uvicorn |
 | Prediksi permintaan | Gradient boosting (scikit-learn HistGradientBoosting, loss Poisson); XGBoost opsional lewat `MODEL=xgboost` |
 | Market basket | Aturan asosiasi dua produk (support, confidence, lift) dengan matriks sparse SciPy |
-| Chat AI | API apa pun yang kompatibel dengan OpenAI (Groq, Gemini, OpenAI) atau Ollama |
+| Chat AI | API apa pun yang kompatibel dengan OpenAI (bawaan: Groq, Llama 3.1 8B; bisa Gemini, OpenAI, Ollama). **Belum aktif di demo**, perlu API key |
 | Data | pandas, NumPy, holidays |
 | Kualitas | pytest, GitHub Actions |
 
@@ -50,19 +61,20 @@ Sitasi: Chen, D. (2012). *Online Retail II* [Dataset]. UCI Machine Learning Repo
 
 Dijalankan pada Online Retail II lengkap: **1.003.214 baris transaksi bersih, 39.516 invoice, 4.707 produk**. Prediksi dibuat untuk 300 produk terlaris.
 
-**Akurasi prediksi 7 hari** (data uji 2011-10-08 s.d. 2011-12-02, yaitu musim puncak menjelang Natal):
+**Akurasi prediksi 7 hari** (data uji 2011-10-07 s.d. 2011-12-01, yaitu musim puncak menjelang Natal):
 
 | Metode | MAE (unit/produk/minggu) | WAPE | Bias |
 |---|---|---|---|
-| **Model (gradient boosting, Poisson)** | **90.4** | **45.9%** | **-3.5%** |
-| Rata-rata 28 hari × 7 | 93.0 | 47.2% | -6.4% |
-| Sama dengan 7 hari terakhir | 107.3 | 54.4% | -2.2% |
+| **Model (gradient boosting, Poisson)** | **91.0** | **46.4%** | **-2.3%** |
+| Rata-rata 28 hari × 7 | 93.0 | 47.4% | -6.3% |
+| Sama dengan 7 hari terakhir | 107.7 | 54.9% | -1.9% |
 
-- Model **2.8% lebih akurat (MAE)** dari metode pembanding terbaik (rata-rata 28 hari), dan biasnya juga lebih kecil, artinya prediksinya tidak cenderung terlalu rendah. Ini penting untuk stok: prediksi yang terlalu rendah membuat barang cepat habis. Metode "sama dengan 7 hari terakhir" memang biasnya paling kecil, tetapi meleset jauh lebih besar (MAE 107).
+- Model **2.2% lebih akurat (MAE)** dari metode pembanding terbaik (rata-rata 28 hari), dan biasnya juga lebih kecil, artinya prediksinya tidak cenderung terlalu rendah. Ini penting untuk stok: prediksi yang terlalu rendah membuat barang cepat habis. Metode "sama dengan 7 hari terakhir" memang biasnya paling kecil, tetapi meleset jauh lebih besar (MAE 108).
 - Selisihnya kecil karena permintaan toko ini sangat tidak teratur: banyak pembeli grosir yang sesekali memesan dalam jumlah besar. WAPE sekitar 46% menunjukkan bahwa permintaan mingguan per produk memang sulit ditebak, sehingga stok pengaman tetap diperlukan.
 - Model dengan target log sempat diuji dan MAE-nya sedikit lebih kecil, tetapi biasnya sekitar −20%. Model itu tidak dipakai karena akan membuat toko kekurangan stok.
+- Hari terakhir dataset (9 Desember 2011) hanya berisi transaksi setengah hari, jadi otomatis diabaikan. Data dianggap berakhir pada 8 Desember 2011.
 
-**Contoh pasangan produk dari market basket:** pembeli *Coffee Mug Dog + Ball Design* 75% juga membeli *Coffee Mug Cat + Bird Design* (lift 46). Produk seri *Poppy's Playhouse* (bedroom, living room, kitchen) juga hampir selalu dibeli bersamaan.
+**Contoh pasangan produk dari market basket** (setiap pasangan ditampilkan sekali, ke arah yang paling kuat): pembeli *Coffee Mug Dog + Ball Design* 75% juga membeli *Coffee Mug Cat + Bird Design* (lift 46). Produk seri *Poppy's Playhouse* (bedroom, living room, kitchen) juga hampir selalu dibeli bersamaan.
 
 ---
 
@@ -90,7 +102,7 @@ flowchart TD
 | Tahap | Yang dilakukan | Kode |
 |---|---|---|
 | **Pembersihan** | Membuang invoice pembatalan (diawali `C`), jumlah atau harga ≤ 0, dan kode non-produk seperti ongkos kirim (`POST`), biaya bank, dan penyesuaian manual. Setiap produk diberi satu nama baku. | `src/data_pipeline/loader.py` |
-| **Penjualan harian** | Menghitung unit terjual per hari untuk **300 produk yang paling sering dipesan**. Hari tanpa penjualan diisi 0. Pesanan grosir yang ekstrem dibatasi di persentil ke-99 supaya tidak merusak model. Kategori produk dibuat dari kata kunci pada nama produk. | `src/data_pipeline/pipeline.py` |
+| **Penjualan harian** | Menghitung unit terjual per hari untuk **300 produk yang paling sering dipesan**. Hari tanpa penjualan diisi 0, dan hari terakhir yang datanya hanya setengah hari diabaikan. Pesanan grosir yang ekstrem dibatasi di persentil ke-99 supaya tidak merusak model. Kategori produk dibuat dari kata kunci pada nama produk. | `src/data_pipeline/pipeline.py` |
 | **Simulasi stok** | Dataset hanya berisi penjualan, jadi stok disimulasikan dengan kebijakan *reorder point* yang lazim dipakai toko (lihat [Simulasi Stok](#-simulasi-stok)). | `src/services/stock_simulation.py` |
 | **Fitur** | Rata-rata 7/14/28/56 hari, variasi permintaan, hari sejak penjualan terakhir, tren, harga, bulan, jarak ke Natal, dan hari libur Inggris pada minggu berikutnya. Semua fitur hanya memakai data sampai hari itu. | `src/services/feature_service.py` |
 | **Evaluasi** | 8 minggu terakhir disisihkan sebagai data uji. Model dibandingkan dengan dua metode sederhana: "sama seperti 7 hari terakhir" dan "rata-rata 28 hari". | `src/services/ml_service.py` |
@@ -142,6 +154,7 @@ Rata-rata dan simpangan baku hanya memakai 28 hari terakhir, jadi simulasi tidak
 
 | Label | Kapan muncul | Saran tindakan |
 |---|---|---|
+| **Stok kosong** | Stok di rak saat ini 0, walaupun mungkin ada kiriman yang sedang dalam perjalanan | Penjualan sedang hilang; percepat kiriman jika bisa |
 | **Stockout** | Stok + barang yang sedang dikirim tidak cukup sampai kiriman berikutnya tiba | Pesan hari ini sesuai kolom *Saran pesan* |
 | **Overstock** | Stok cukup untuk lebih dari 60 hari | Tunda pemesanan |
 | **Deadstock** | Tidak terjual sama sekali selama 60 hari, tapi masih ada stok | Diskon atau cuci gudang |
@@ -211,6 +224,49 @@ python -m pytest -q
 ```
 
 Test memakai data tiruan berformat Online Retail II (`tests/fake_data.py`), jadi tidak perlu mengunduh dataset. Test yang sama berjalan otomatis di GitHub Actions setiap ada push.
+
+---
+
+## 🌐 Mode Demo
+
+Demo online berjalan tanpa server. Dashboard membaca hasil pipeline yang disimpan sebagai file JSON di `public/demo/`.
+
+```bash
+python -m src.controllers.orchestrator   # jalankan pipeline dengan dataset asli
+python scripts/export_demo.py            # simpan hasilnya ke public/demo/*.json
+VITE_DEMO=true npm run build             # build dashboard versi demo ke folder dist/
+```
+
+Setiap push ke `main`, GitHub Actions membangun versi demo dan menyimpannya di branch `gh-pages`.
+
+Di mode demo, Chat AI menjawab otomatis dari data dengan aturan sederhana (misalnya daftar produk yang perlu dipesan). Setiap jawaban diberi keterangan bahwa model AI belum aktif.
+
+---
+
+## 🤖 Mengaktifkan Chat AI
+
+> **Status saat ini:** Chat AI **belum berjalan** di demo online. Integrasinya sudah selesai dan sudah dites, tetapi butuh **API key LLM** yang harus dibuat dengan akun sendiri.
+
+**Di komputer sendiri (paling cepat):**
+1. Buat API key gratis di [Groq](https://console.groq.com/keys) (tanpa kartu kredit), atau di Google AI Studio untuk Gemini.
+2. Isi `LLM_API_KEY` di file `.env` (contoh pengaturan ada di `.env.example`).
+3. Jalankan backend dan frontend seperti di bagian [Instalasi](#-instalasi). Chat akan menjawab memakai model AI sambil membaca data stok.
+
+**Online, supaya demo memakai AI sungguhan:**
+
+| Pilihan | File | Catatan |
+|---|---|---|
+| **Hugging Face Spaces** (disarankan) | `Dockerfile`, `.github/workflows/deploy-hf.yml` | Gratis tanpa kartu. Isi secret `HF_TOKEN` dan variable `HF_SPACE` di GitHub, lalu `LLM_API_KEY` di pengaturan Space |
+| Render | `render.yaml` | Paket gratis, tetapi Blueprint meminta kartu pembayaran |
+| Docker di server mana pun | `Dockerfile` | `docker build -t retail-api . && docker run -p 7860:7860 -e LLM_API_KEY=... retail-api` |
+
+Setelah backend online, isi repository variable `CHAT_API_URL` di GitHub dengan alamat backend tersebut. Build demo berikutnya akan otomatis memakai Chat AI sungguhan.
+
+Pengaman yang sudah ada:
+- API key tidak pernah disimpan di kode.
+- Batas 10 pertanyaan per menit per pengunjung dan maksimal 500 karakter per pesan, supaya kuota gratis tidak habis.
+- Server tidak membutuhkan dataset, karena otomatis memakai hasil di `public/demo/`.
+- Jika server AI sedang tidur atau tidak bisa dihubungi, chat di demo tetap menjawab dari data.
 
 ---
 
@@ -326,14 +382,17 @@ Panduan ini untuk manajer toko atau staf gudang yang memakai dashboard.
 3. AI menjawab singkat dengan angka dari data terbaru.
 
 > AI hanya membaca data dari sistem. Tetap cek ulang angkanya di tabel sebelum mengambil keputusan besar.
+>
+> Di demo online, chat masih berjalan dalam **mode demo** (label "Mode demo (AI belum aktif)" di jendela chat), karena API key LLM perlu disiapkan terlebih dahulu.
 
 ---
 
 ## ⚠️ Keterbatasan
 
 - **Stok masih simulasi.** Dataset hanya berisi penjualan, jadi stok, waktu kirim, dan penjualan hilang adalah hasil simulasi kebijakan pada bagian [Simulasi Stok](#-simulasi-stok). Untuk dipakai di toko sungguhan, ganti dengan data stok asli.
-- **Kategori dibuat dari kata kunci** pada nama produk, sehingga sebagian produk masuk kategori "Other".
+- **Kategori dibuat dari kata kunci** pada nama produk. Hampir semua produk sudah terkelompok, tetapi sebagian kecil bisa masuk kategori yang kurang tepat.
 - **Satu toko online.** Data berasal dari satu peritel online di Inggris dengan banyak pembeli grosir, jadi polanya bisa berbeda dari toko fisik.
+- **Chat AI di demo belum memakai model AI** karena API key perlu disiapkan. Lihat [Mengaktifkan Chat AI](#-mengaktifkan-chat-ai).
 - **Hanya 300 produk terlaris** yang diprediksi. Jumlah ini bisa diubah lewat `TOP_N_PRODUCTS` di `.env`.
 
 ---
@@ -343,19 +402,24 @@ Panduan ini untuk manajer toko atau staf gudang yang memakai dashboard.
 ```text
 retail-inventory-ai/
 ├── data/                  # Dataset dan hasil pipeline (tidak di-commit)
+├── public/demo/           # Hasil dari data asli untuk mode demo (dibuat oleh scripts/export_demo.py)
+├── scripts/               # export_demo.py
 ├── src/
 │   ├── api/               # Server FastAPI
 │   ├── config/            # Semua pengaturan (bisa diubah lewat .env)
 │   ├── controllers/       # Orchestrator alur kerja
 │   ├── data_pipeline/     # Membaca, membersihkan, dan membentuk data harian
 │   ├── services/          # Simulasi stok, fitur, model, keputusan, market basket, konteks chat
-│   ├── repositories/      # Baca/tulis file data, model, dan hasil
+│   ├── repositories/      # Baca/tulis file data, model, dan hasil (+ cadangan dari public/demo)
 │   ├── llm_engine/        # Klien LLM dan prompt
-│   └── dashboard/         # Frontend React
+│   └── dashboard/         # Frontend React (termasuk mode demo)
 ├── tests/                 # pytest + data tiruan berformat Online Retail II
-├── .github/workflows/     # CI: test backend + build frontend
+├── .github/workflows/     # CI, build demo ke gh-pages, deploy ke Hugging Face
+├── Dockerfile             # Server API untuk Hugging Face Spaces / Docker
+├── render.yaml            # Alternatif deploy di Render
 ├── .env.example           # Contoh konfigurasi
-└── requirements.txt
+├── requirements.txt       # Semua library (pipeline + API + test)
+└── requirements-api.txt   # Library minimum untuk menjalankan API
 ```
 
 ---

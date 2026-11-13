@@ -71,11 +71,13 @@ export async function demoChat(message: string): Promise<string> {
   const { data } = await demoFile<{ data: DemoProduct[] }>("forecast.json");
   const q = message.toLowerCase();
   const named = data.filter((p) => q.includes(p.product_name.toLowerCase()) || q.includes(p.product_id.toLowerCase()));
-  const note = "\n\n(Mode demo: jawaban dibuat otomatis dari data, bukan oleh model AI.)";
+  const note = "\n\n(Mode demo: Chat AI belum aktif karena API key perlu disiapkan. Jawaban ini dibuat otomatis dari data.)";
 
   if (named.length) {
     const p = named[0];
-    const flags = Object.entries(p.risk_flags).filter(([, v]) => v).map(([k]) => k.replace(/_/g, " "));
+    const labels: Record<string, string> = { out_of_stock: "stok kosong", stockout_risk: "berisiko habis", overstock_risk: "overstock",
+      deadstock_risk: "deadstock", promo_opportunity: "peluang promo", missed_revenue_flag: "sempat kehilangan penjualan" };
+    const flags = Object.entries(p.risk_flags).filter(([, v]) => v).map(([k]) => labels[k] ?? k);
     return `${line(p)}. Waktu kirim supplier ${p.lead_time_days} hari. ` +
       (p.recommended_order_qty > 0 ? `Saran: pesan ${p.recommended_order_qty} unit sekarang. ` : "Belum perlu dipesan. ") +
       (flags.length ? `Status: ${flags.join(", ")}.` : "Status aman.") +
@@ -88,9 +90,9 @@ export async function demoChat(message: string): Promise<string> {
       rows.slice(0, 5).map((p) => `${line(p)} → pesan ${p.recommended_order_qty} unit`).join("\n") + note;
   }
   if (/habis|stockout|kosong|kritis|risiko|risk/.test(q)) {
-    const rows = data.filter((p) => p.risk_flags.stockout_risk);
+    const rows = data.filter((p) => p.risk_flags.stockout_risk || p.risk_flags.out_of_stock);
     const lost = data.filter((p) => p.risk_flags.missed_revenue_flag).sort((a, b) => b.lost_revenue_30d - a.lost_revenue_30d);
-    return (rows.length ? `${rows.length} produk berisiko habis sebelum kiriman tiba:\n${rows.slice(0, 5).map(line).join("\n")}` : "Tidak ada produk yang berisiko habis sebelum kiriman berikutnya.") +
+    return (rows.length ? `${rows.length} produk sedang kosong atau berisiko habis sebelum kiriman tiba:\n${rows.slice(0, 5).map(line).join("\n")}` : "Tidak ada produk yang berisiko habis sebelum kiriman berikutnya.") +
       (lost.length ? `\n\nProduk yang paling banyak kehilangan penjualan dalam 30 hari terakhir:\n${lost.slice(0, 3).map((p) => `• ${p.product_name}: ${fmt(p.lost_revenue_30d)}`).join("\n")}` : "") + note;
   }
   if (/diskon|promo|overstock|menumpuk|berlebih|deadstock/.test(q)) {

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import "./FloatingAIChat.css";
-import { sendChat, warmUpChat } from "./api";
+import { sendChat, warmUpChat, DEMO, CHAT_API } from "./api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -194,6 +194,8 @@ export default function FloatingAIChat({ inventoryContext }: FloatingAIChatProps
                 <div className="fai-popup-subtitle">
                   {loading ? (
                     <span className="fai-status-thinking">Sedang menganalisis...</span>
+                  ) : DEMO && !CHAT_API ? (
+                    <span className="fai-status-online" title="Chat AI belum aktif: API key LLM perlu disiapkan.">● Mode demo (AI belum aktif)</span>
                   ) : (
                     <span className="fai-status-online">● Online</span>
                   )}

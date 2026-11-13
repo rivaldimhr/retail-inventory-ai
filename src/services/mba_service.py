@@ -1,6 +1,7 @@
 """Market basket analysis on real invoices.
 
-Each invoice is one basket. Rules are product pairs "A -> B" with support, confidence and lift,
+Each invoice is one basket. Rules are product pairs "A -> B" with support, confidence and lift (one row per pair,
+in its stronger direction),
 the same measures Apriori produces for 2-item rules, computed directly with a sparse
 co-occurrence matrix (fast, no extra dependency).
 """
@@ -45,7 +46,12 @@ def run(tx: pd.DataFrame, min_support=None, min_confidence=None, min_lift=None, 
     rules = pd.DataFrame({
         "a": prod_codes[a[keep]], "b": prod_codes[b[keep]], "count": c[keep],
         "support": support[keep], "confidence": confidence[keep], "lift": lift[keep],
-    }).sort_values(["lift", "support"], ascending=False).head(config.MBA_MAX_RULES)
+    })
+    # A -> B and B -> A describe the same pair (same support and lift). Keep one row per pair,
+    # in the direction with the higher confidence, so the list shows distinct product pairs.
+    rules["pair"] = [tuple(sorted(x)) for x in zip(rules["a"], rules["b"])]
+    rules = (rules.sort_values("confidence", ascending=False).drop_duplicates("pair")
+             .sort_values(["lift", "support"], ascending=False).head(config.MBA_MAX_RULES))
 
     rules_list = [
         {

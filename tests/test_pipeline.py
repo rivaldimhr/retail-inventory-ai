@@ -43,7 +43,7 @@ def test_old_column_names_are_accepted():
     ("SET OF 3 CAKE TINS PANTRY DESIGN", "Baking & party"),
     ("PAPER CHAIN KIT 50'S CHRISTMAS", "Christmas & seasonal"),
     ("JUMBO BAG RED RETROSPOT", "Bags & storage"),
-    ("OIL PAINTING VINTAGE", "Other"),          # 'TIN' inside a word must not match
+    ("OIL PAINTING VINTAGE", "Home decor"),     # "TIN" inside PAINTING must not match Bags
 ])
 def test_categorize(desc, expected):
     assert categorize(desc) == expected
@@ -163,3 +163,28 @@ def test_bundled_results_are_readable():
     assert bundled.history("NOPE", 30) == []
     assert bundled.mba()["summary"]["total_rules"] > 0
     assert "metrics" in bundled.metrics()
+
+
+def test_mba_lists_each_pair_once(tx):
+    res = mba_service.run(tx, min_support=0.001, min_confidence=0.0, min_lift=0.0, top_n=50)
+    pairs = [tuple(sorted([r["antecedent_codes"][0], r["consequent_codes"][0]])) for r in res["rules"]]
+    assert len(pairs) == len(set(pairs))
+
+
+def test_empty_shelf_is_flagged_even_with_delivery_on_the_way(daily):
+    d = daily.copy()
+    last = d["date"] == d["date"].max()
+    d.loc[last, "stock_qty"] = 0
+    d.loc[last, "on_order"] = 10_000
+    d.loc[last, "ordered"] = 0
+    snap = _snapshot(d, forecast_7d=70.0)
+    assert all(p["risk_flags"]["out_of_stock"] for p in snap["predictions"])
+    assert not any(p["risk_flags"]["stockout_risk"] for p in snap["predictions"])
+
+
+def test_incomplete_last_day_is_dropped(tx):
+    from src.data_pipeline.pipeline import drop_incomplete_last_day
+    last = tx["date"].max()
+    half_day = pd.concat([tx[tx["date"] < last], tx[tx["date"] == last].head(3)])
+    assert drop_incomplete_last_day(half_day)["date"].max() < last
+    assert drop_incomplete_last_day(tx)["date"].max() == last

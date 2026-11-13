@@ -34,6 +34,7 @@ interface DemandSignal {
 }
 
 interface RiskFlags {
+  out_of_stock: boolean;
   stockout_risk: boolean;
   overstock_risk: boolean;
   deadstock_risk: boolean;
@@ -143,6 +144,7 @@ function TrendBadge({ direction }: { direction: Prediction["trend_direction"] })
 
 function RiskBadges({ flags }: { flags: RiskFlags }) {
   const active = [
+    flags.out_of_stock && <span key="oos" className="badge risk-stockout">Stok kosong</span>,
     flags.stockout_risk && <span key="so" className="badge risk-stockout">Stockout</span>,
     flags.overstock_risk && <span key="ov" className="badge risk-overstock">Overstock</span>,
     flags.deadstock_risk && <span key="ds" className="badge risk-deadstock">Deadstock</span>,
@@ -294,6 +296,7 @@ export default function App() {
   const reorderRows = predictions.filter((p) => p.recommended_order_qty > 0);
   const count = (k: keyof RiskFlags) => predictions.filter((p) => p.risk_flags[k]).length;
   const stockoutCount = count("stockout_risk");
+  const outOfStockCount = count("out_of_stock");
   const overstockCount = count("overstock_risk");
   const deadstockCount = count("deadstock_risk");
   const lostSalesCount = count("missed_revenue_flag");
@@ -322,6 +325,7 @@ export default function App() {
   const okCount = predictions.filter((p) => !Object.values(p.risk_flags).some(Boolean)).length;
   const riskChartData = [
     { name: "Aman", value: okCount, fill: "#10b981" },
+    { name: "Stok kosong", value: outOfStockCount, fill: "#be123c" },
     { name: "Stockout", value: stockoutCount, fill: "#f43f5e" },
     { name: "Overstock", value: overstockCount, fill: "#f59e0b" },
     { name: "Deadstock", value: deadstockCount, fill: "#94a3b8" },
@@ -373,8 +377,8 @@ export default function App() {
 
       {DEMO && (
         <div className="demo-banner">
-          Mode demo: data asli Online Retail II (UCI) sampai {metadata?.data_as_of ?? "…"}, tanpa server.
-          Stok adalah hasil simulasi, dan Chat AI menjawab otomatis dari data.{" "}
+          Mode demo: data asli Online Retail II (UCI) sampai {metadata?.data_as_of ?? "…"}, tanpa server. Stok adalah hasil simulasi.
+          Chat AI belum aktif karena API key perlu disiapkan, jadi chat menjawab otomatis dari data.{" "}
           <a href="https://github.com/rivaldimhr/retail-inventory-ai" target="_blank" rel="noreferrer">Lihat kode di GitHub</a>
         </div>
       )}
@@ -466,7 +470,7 @@ export default function App() {
         {activeTab === "forecast" && <>
           <section className="cards-grid">
             <SummaryCard label="Perlu dipesan" value={reorderRows.length} icon={icons.cart} variant="sc-neutral" sub="stok + kiriman ≤ titik pesan ulang" />
-            <SummaryCard label="Risiko kehabisan" value={stockoutCount} icon={icons.alert} variant="sc-danger" sub="habis sebelum kiriman tiba" />
+            <SummaryCard label="Risiko kehabisan" value={stockoutCount} icon={icons.alert} variant="sc-danger" sub={`habis sebelum kiriman tiba · ${outOfStockCount} sedang kosong`} />
             <SummaryCard label="Nilai berisiko" value={money(revenueAtRisk, currency)} icon={icons.dollar} variant="sc-danger" sub="penjualan hilang jika tidak dipesan" />
             <SummaryCard label="Overstock" value={overstockCount} icon={icons.trend} variant="sc-warning" sub="stok > 60 hari" />
             <SummaryCard label="Deadstock" value={deadstockCount} icon={icons.archive} variant="sc-muted" sub="tidak terjual ≥ 60 hari" />
@@ -590,7 +594,7 @@ export default function App() {
                       <tr><td colSpan={9} className="empty-cell">Tidak ada produk yang cocok.</td></tr>
                     ) : filtered.map((p) => {
                       const hasRisk = Object.values(p.risk_flags).some(Boolean);
-                      const rowCls = p.risk_flags.stockout_risk ? "row-stockout" : p.risk_flags.overstock_risk ? "row-overstock" : hasRisk ? "row-risk" : "";
+                      const rowCls = p.risk_flags.stockout_risk || p.risk_flags.out_of_stock ? "row-stockout" : p.risk_flags.overstock_risk ? "row-overstock" : hasRisk ? "row-risk" : "";
                       return (
                         <tr key={p.product_id} className={`${rowCls} row-click ${selected?.product_id === p.product_id ? "row-selected" : ""}`}
                           onClick={() => setSelected(p)} tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") setSelected(p); }}>
