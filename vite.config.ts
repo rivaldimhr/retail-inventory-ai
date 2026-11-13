@@ -10,11 +10,12 @@ export default defineConfig({
     },
   },
   build: {
+    // Recharts alone is ~540 kB minified (~160 kB gzipped) and cannot be split further.
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         // Keep the large charting library in its own file so the app code stays small and caches well.
         manualChunks: {
-          react: ["react", "react-dom"],
           charts: ["recharts"],
         },
       },
