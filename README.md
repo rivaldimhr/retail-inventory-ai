@@ -316,7 +316,7 @@ Pengaman yang sudah ada:
 
 ## 🗺️ Diagram Aktivitas Pengguna
 
-Diagram ini menunjukkan langkah yang dilakukan pengguna (manajer toko atau staf gudang) setiap kali memakai sistem. Penjelasan detail setiap langkah ada di [Panduan Pengguna](#-panduan-pengguna).
+Diagram ini menunjukkan langkah yang dilakukan pengguna (manajer toko atau staf gudang) setiap kali memakai sistem. Penjelasan detail setiap langkah ada di [Panduan Pengguna](#-panduan-pengguna), dan arti setiap tabel, warna, dan tombol ada di [Cara Membaca Dashboard](#-cara-membaca-dashboard).
 
 ### A. Rutinitas harian: cek stok sampai ambil keputusan
 
@@ -374,6 +374,126 @@ flowchart TD
 ```
 
 > Jika prediksi berumur lebih dari 24 jam, dashboard tetap menampilkan data tetapi label status berubah menjadi **"Perlu diperbarui"**.
+
+---
+
+## 📖 Cara Membaca Dashboard
+
+Bagian ini menjelaskan setiap elemen di dashboard: arti angkanya, warnanya, dan fungsi setiap tombol.
+
+### Bagian atas
+| Elemen | Fungsi |
+|---|---|
+| **Data per …** | Tanggal terakhir data yang dipakai. Semua angka dihitung per tanggal ini |
+| **… produk** | Jumlah produk yang dipantau (300 produk terlaris) |
+| **Terbaru / Perlu diperbarui** | Hanya saat memakai backend. Berubah menjadi "Perlu diperbarui" jika prediksi berumur lebih dari 24 jam |
+| Tombol **Refresh** | Memuat ulang data dari server (di demo: memuat ulang file data) |
+| **Banner kuning** | Hanya di demo: data asli, stok hasil simulasi, Chat AI belum aktif |
+| Tab **Stok & Prediksi** / **Market Basket** | Berpindah antara halaman stok dan halaman produk yang sering dibeli bersamaan |
+
+### Kartu ringkasan (tab Stok & Prediksi)
+| Kartu | Artinya | Kapan perlu bertindak |
+|---|---|---|
+| **Perlu dipesan** | Jumlah produk yang stok + barang dalam perjalanan sudah di bawah titik pesan ulang | Lebih dari 0 → lihat kolom *Saran pesan* |
+| **Risiko kehabisan** | Produk yang akan habis sebelum kiriman berikutnya tiba. Keterangan kecilnya menyebut berapa produk yang **sedang kosong** | Lebih dari 0 → pesan hari ini |
+| **Nilai berisiko** | Perkiraan penjualan (£) yang hilang jika produk berisiko tidak segera dipesan | Makin besar makin mendesak |
+| **Overstock** | Produk yang stoknya cukup untuk lebih dari 60 hari | Tunda pemesanan |
+| **Deadstock** | Produk yang tidak terjual sama sekali selama 60 hari tetapi masih ada stok | Diskon atau cuci gudang |
+| **Penjualan hilang 30h** | Nilai penjualan (£) yang tidak terlayani karena stok kosong dalam 30 hari terakhir | Tanda stok pengaman perlu ditambah |
+
+### Kotak akurasi (biru)
+Menunjukkan seberapa tepat prediksi 7 hari:
+- **Rata-rata meleset X unit**: selisih rata-rata antara prediksi dan penjualan sebenarnya, per produk per minggu.
+- **(Y% dari total penjualan)**: selisih itu dibandingkan total penjualan (WAPE). Akurasi = 100% − Y%.
+- **Z% lebih akurat**: perbandingan dengan metode sederhana "rata-rata 28 hari". Penjelasan lengkap ada di [Hasil pada Data Asli](#-hasil-pada-data-asli).
+
+### Grafik
+| Grafik | Cara membaca |
+|---|---|
+| **Top 10 produk: prediksi 7 hari vs 7 hari terakhir** | Batang ungu tua = prediksi minggu depan, ungu muda = penjualan 7 hari terakhir. Jika ungu tua jauh lebih rendah, penjualan produk itu diperkirakan turun |
+| **Status risiko produk** | Proporsi produk per status: Aman, Stok kosong, Stockout, Overstock, Deadstock, Lost Sales. Satu produk bisa punya lebih dari satu status, jadi yang dihitung adalah jumlah status |
+| **Produk per kategori** | Batang muda = jumlah produk di kategori itu, batang tua = yang perlu dipesan |
+
+### Tabel Daftar Produk
+| Kolom | Artinya |
+|---|---|
+| **Produk** | Nama produk dan kode produk (StockCode) |
+| **Kategori** | Kelompok produk, dibuat dari kata kunci pada nama produk |
+| **Stok** | Stok di gudang sekarang. Baris kecil **"+N dikirim"** = barang yang sudah dipesan dan sedang dalam perjalanan |
+| **Cukup untuk** | Stok cukup untuk berapa hari lagi, berdasarkan prediksi. Arti warna bar: lihat tabel di bawah |
+| **Prediksi 7 hari** | Perkiraan unit yang akan terjual dalam 7 hari ke depan |
+| **Saran pesan** | Jumlah unit yang disarankan untuk dipesan **sekarang**. "—" berarti belum perlu dipesan |
+| **Nilai berisiko** | Penjualan (£) yang bisa hilang sebelum kiriman tiba jika produk ini tidak dipesan |
+| **Tren** | ▲ Naik / ● Stabil / ▼ Turun: penjualan 14 hari terakhir dibandingkan 14 hari sebelumnya (naik ≥ 25% atau turun ≥ 20%) |
+| **Status** | Label risiko produk (lihat di bawah) |
+
+**Warna bar "Cukup untuk":**
+| Warna | Artinya |
+|---|---|
+| 🔴 Merah | Stok habis sebelum kiriman berikutnya tiba |
+| 🟠 Oranye | Overstock (lebih dari 60 hari) |
+| 🟡 Kuning | Aman, tetapi kurang dari 2× waktu kirim supplier, jadi perlu dipantau |
+| 🟢 Hijau | Aman |
+
+**Label status:**
+| Label | Artinya |
+|---|---|
+| **Stok kosong** | Rak kosong sekarang, walaupun mungkin ada kiriman dalam perjalanan |
+| **Stockout** | Stok + kiriman tidak cukup sampai kiriman berikutnya tiba |
+| **Overstock** | Stok cukup untuk lebih dari 60 hari |
+| **Deadstock** | Tidak terjual 60 hari, stok masih ada |
+| **Promo** | Penjualan turun dan stok cukup untuk lebih dari 30 hari |
+| **Lost Sales** | Ada permintaan yang tidak terlayani dalam 30 hari terakhir |
+| **OK** | Tidak ada masalah |
+
+**Warna baris:** merah muda = produk kosong atau berisiko habis, kuning = overstock, abu-abu muda = ada label risiko lain.
+
+**Kontrol tabel:**
+| Kontrol | Fungsi |
+|---|---|
+| Kotak **Cari** | Mencari produk berdasarkan nama atau kode |
+| **Semua kategori** | Menampilkan satu kategori saja |
+| **Hanya yang perlu dipesan** | Menyembunyikan produk yang belum perlu dipesan |
+| **Unduh daftar pesan** | Mengunduh file CSV berisi produk yang perlu dipesan: kode, nama, stok, prediksi, saran pesan, harga, dan nilai pesanan |
+| **Klik baris produk** | Membuka panel detail produk (di bawah) |
+
+### Panel detail produk
+Muncul saat sebuah produk diklik:
+| Angka | Artinya |
+|---|---|
+| **Stok sekarang** | Stok di gudang |
+| **Sedang dikirim** | Barang yang sudah dipesan dan belum tiba |
+| **Prediksi 7 hari** | Perkiraan penjualan minggu depan |
+| **Titik pesan ulang** | Batas stok: jika stok + kiriman ≤ angka ini, produk perlu dipesan |
+| **Stok pengaman** | Cadangan untuk menutup lonjakan permintaan yang tidak terduga |
+| **Waktu kirim supplier** | Berapa hari sejak memesan sampai barang tiba |
+
+Grafiknya menampilkan 90 hari terakhir: **batang ungu** = unit terjual, **batang merah** = permintaan yang tidak terlayani karena stok kosong, **garis hijau** = stok. Garis hijau yang naik tajam menandakan kiriman tiba.
+
+### Tab Market Basket
+| Elemen | Artinya |
+|---|---|
+| **Pasangan produk** | Jumlah pasangan produk yang ditemukan |
+| **Invoice dianalisis** | Jumlah transaksi (invoice) yang dipakai |
+| **Total produk** | Jumlah produk di seluruh data |
+| **Jika membeli → Cenderung juga membeli** | Pasangan produk. Setiap pasangan hanya muncul sekali, ke arah yang paling kuat |
+| **Invoice** | Berapa kali kedua produk ada di invoice yang sama |
+| **Support** | Persentase invoice yang berisi kedua produk. Makin tinggi makin umum |
+| **Confidence** | Dari pembeli produk pertama, berapa persen yang juga membeli produk kedua |
+| **Lift** | Seberapa jauh di atas kebetulan. Di atas 1 = saling terkait; **oranye** di atas 1,5; **merah** di atas 2 = sangat kuat |
+| **Cari produk** | Menampilkan pasangan yang mengandung produk tertentu |
+| **Hitung ulang** | Menghitung ulang pasangan dari data terbaru (tidak tersedia di demo) |
+
+Arahkan kursor ke tanda **?** di judul kolom untuk melihat penjelasan singkatnya.
+
+### Jendela Chat
+| Elemen | Fungsi |
+|---|---|
+| **Tombol bulat kanan bawah** | Membuka dan menutup chat |
+| **Status di bawah judul** | "Mode demo (AI belum aktif)" di demo, atau "Online" saat Chat AI aktif |
+| **Baris merah/oranye** | Jumlah produk stockout, overstock, dan total produk |
+| **Tombol pertanyaan cepat** | 8 contoh pertanyaan yang langsung terkirim saat diklik |
+| **Kolom ketik** | Ketik pertanyaan lalu tekan Enter. Daftar pertanyaan yang didukung ada di [Mode Demo](#-mode-demo) |
 
 ---
 
